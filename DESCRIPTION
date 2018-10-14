@@ -1,0 +1,36 @@
+Package: scoper
+Type: Package
+Version: 0.1.0
+Date: 2018-10-04
+Authors@R: c(person("Nima", "Nouri", role=c("aut", "cre"), 
+                    email="nima.nouri@yale.edu"),
+             person("Jason", "Vander Heiden", role=c("ctb"), 
+                    email="jason.vanderheiden@yale.edu"), 
+             person("Steven", "Kleinstein", role=c("aut", "cph"), 
+                    email="steven.kleinstein@yale.edu"))
+Title: Spectral Clustering-Based Method for Identifying B Cell Clones
+Description: Provides a computational framework for unsupervised identification B cell clones 
+             from adaptive immune receptor repertoire sequencing (AIRR-Seq) datasets. This method 
+             is based on spectral clustering of the junction sequences of B cell receptors (BCRs, 
+             also referred to as Immunoglobulins, (Igs)) that share the same V gene, J gene and junction length. 
+License: CC BY-SA 4.0
+URL: https://scoper.readthedocs.io
+BugReports: https://bitbucket.org/kleinstein/scoper/issues
+LazyData: true
+BuildVignettes: true
+VignetteBuilder: knitr
+Encoding: UTF-8
+Depends: R (>= 3.1.2), ggplot2 (>= 2.0.0)
+Imports: alakazam (>= 0.2.11), shazam (>= 0.1.10), doParallel, foreach,
+        dplyr (>= 0.7.0), stringi, methods, stats, iterators, lazyeval
+Suggests: knitr, rmarkdown, testthat
+RoxygenNote: 6.1.0
+Collate: 'Data.R' 'Scoper.R' 'Functions.R'
+NeedsCompilation: no
+Packaged: 2018-10-04 20:58:03 UTC; nima
+Author: Nima Nouri [aut, cre],
+  Jason Vander Heiden [ctb],
+  Steven Kleinstein [aut, cph]
+Maintainer: Nima Nouri <nima.nouri@yale.edu>
+Repository: CRAN
+Date/Publication: 2018-10-14 17:00:03 UTC
