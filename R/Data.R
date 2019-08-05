@@ -33,14 +33,3 @@
 #'            Proc Natl Acad Sci USA. 2014 111:4928-33.
 #' }
 "ExampleDb"
-
-
-#' Cloned example data
-#'
-#' Includes the \code{CLONE} column.
-#'
-#' @name ExampleDb
-#' @rdname ExampleDb
-"ClonedExampleDb"
-
-

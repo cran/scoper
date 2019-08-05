@@ -3,7 +3,6 @@
 \docType{data}
 \name{ExampleDb}
 \alias{ExampleDb}
-\alias{ClonedExampleDb}
 \title{Example Change-O database}
 \format{A data.frame with the following Change-O style columns:
   \itemize{
@@ -27,13 +26,9 @@
 }}
 \usage{
 ExampleDb
-
-ClonedExampleDb
 }
 \description{
 A small example database subset from Laserson and Vigneault et al, 2014.
-
-Includes the \code{CLONE} column.
 }
 \references{
 \enumerate{

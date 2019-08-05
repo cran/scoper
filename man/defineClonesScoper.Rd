@@ -4,31 +4,69 @@
 \alias{defineClonesScoper}
 \title{Assigning Ig sequences into clonal groups}
 \usage{
-defineClonesScoper(db, junction = "JUNCTION", v_call = "V_CALL",
-  j_call = "J_CALL", first = FALSE, cdr3 = FALSE, mod3 = FALSE,
-  iter_max = 1000, nstart = 25, nproc = 1, progress = FALSE,
-  out_name = NULL, out_dir = ".")
+defineClonesScoper(db, model = c("identical", "hierarchical",
+  "spectral"), method = c("nt", "aa", "single", "average", "complete",
+  "novj", "vj"), germline_col = "GERMLINE_IMGT",
+  sequence_col = "SEQUENCE_IMGT", junction_col = "JUNCTION",
+  v_call_col = "V_CALL", j_call_col = "J_CALL",
+  clone_col = c("clone_id", "CLONE"), targeting_model = NULL,
+  len_limit = NULL, first = FALSE, cdr3 = FALSE, mod3 = FALSE,
+  max_n = NULL, threshold = NULL, base_sim = 0.95, iter_max = 1000,
+  nstart = 1000, nproc = 1, verbose = FALSE, log_verbose = FALSE,
+  out_dir = ".", summerize_clones = FALSE)
 }
 \arguments{
-\item{db}{data.frame with Change-O style columns containing sequence data.}
+\item{db}{data.frame containing sequence data.}
 
-\item{junction}{name of the column containing nucleotide sequences to compare.
+\item{model}{one of the \code{"identical"}, \code{"hierarchical"}, or \code{"spectral"}. 
+See Details for description.}
+
+\item{method}{one of the \code{"nt"}, \code{"aa"}, \code{"single"}, \code{"average"}, 
+\code{"complete"}, \code{"novj"}, or \code{"vj"}. See Details for description.}
+
+\item{germline_col}{character name of the column containing the germline or reference sequence.}
+
+\item{sequence_col}{character name of the column containing input sequences.}
+
+\item{junction_col}{character name of the column containing junction sequences.
 Also used to determine sequence length for grouping.}
 
-\item{v_call}{name of the column containing the V-segment allele calls.}
+\item{v_call_col}{character name of the column containing the V-segment allele calls.}
 
-\item{j_call}{name of the column containing the J-segment allele calls.}
+\item{j_call_col}{character name of the column containing the J-segment allele calls.}
 
-\item{first}{if \code{TRUE} only the first call of the gene assignments
-is used. if \code{FALSE} the union of ambiguous gene
-assignments is used to group all sequences with any
-overlapping gene calls.}
+\item{clone_col}{one of the \code{"CLONE"} or \code{"clone_id"} for the output column name 
+containing the clone ids.}
 
-\item{cdr3}{if \code{TRUE} remove 3 nts from both ends of \code{junction}
-(converts IMGT junction to CDR3 region). if \code{TRUE} remove \code{junction}(s)
-with length less than 7 nts.}
+\item{targeting_model}{\link{TargetingModel} object. Only applicable if \code{model} = \code{"spectral"} 
+and \code{method} = \code{"vj"}. See Details for description.}
 
-\item{mod3}{if \code{TRUE} remove \code{junction}(s) with number of nucleotides not modulus of 3.}
+\item{len_limit}{\link{IMGT_V} object defining the regions and boundaries of the Ig 
+sequences. If NULL, mutations are counted for entire sequence. Only 
+applicable if \code{model} = \code{"spectral"} and \code{method} = \code{"vj"}.}
+
+\item{first}{specifies how to handle multiple V(D)J assignments for initial grouping. 
+If \code{TRUE} only the first call of the gene assignments is used. 
+If \code{FALSE} the union of ambiguous gene assignments is used to 
+group all sequences with any overlapping gene calls.}
+
+\item{cdr3}{if \code{TRUE} removes 3 nts from both ends of \code{"junction_col"}
+(converts IMGT junction to CDR3 region). if \code{TRUE} remove 
+\code{junction_col}(s) with length less than 7 nts.}
+
+\item{mod3}{if \code{TRUE} removes \code{junction_col}(s) with number of nucleotides not 
+modulus of 3.}
+
+\item{max_n}{The maximum number of N's to permit in the junction sequence before excluding the 
+record from clonal assignment. Note, under model \code{"hierarchical"} and method 
+\code{"single"} non-informative positions can create artifactual links between 
+unrelated sequences. Use with caution. Default is set to be \code{"NULL"} for no action.}
+
+\item{threshold}{the distance threshold for clonal grouping if \code{model} = \code{"hierarchical"}; or 
+the upper-limit cut-off if \code{model} = \code{"spectral"}.}
+
+\item{base_sim}{required similarity cut-off for sequences in equal distances from each other.
+Only applicable if \code{model} = \code{"spectral"}.}
 
 \item{iter_max}{the maximum number of iterations allowed for kmean clustering step.}
 
@@ -36,36 +74,63 @@ with length less than 7 nts.}
 
 \item{nproc}{number of cores to distribute the function over.}
 
-\item{progress}{if \code{TRUE} print a progress bar.}
+\item{verbose}{if \code{TRUE} report a summary of each step cloning process;
+if \code{FALSE} process cloning silently.}
 
-\item{out_name}{if not \code{NULL} save cloned data.frame and a summary of cloning
-performance. \code{out_name} string is used as the prefix of the successfully
-processed output files.}
+\item{log_verbose}{if \code{TRUE} write verbose logging to a file in \code{out_dir}.}
 
-\item{out_dir}{specify to change the output directory. The input file
-directory is used if this is not specified while \code{out_name} is specified.}
+\item{out_dir}{specify the output directory to save \code{log_verbose}. The input 
+file directory is used if this is not specified.}
+
+\item{summerize_clones}{if \code{TRUE} performs a series of analysis to assess the clonal landscape.
+See Value for description.}
 }
 \value{
-Returns a modified \code{db} data.frame with clone identifiers in the \code{CLONE} column.
-if \code{out_name} is not \code{NULL}, it will save the modified \code{db} and a summary
-of cloning performance in the current directory or the specified \code{out_dir}.
+For \code{summerize_clones} = \code{FALSE}, a modified data.frame with clone identifiers in the \code{clone_col} column. 
+For \code{summerize_clones} = \code{TRUE} returns a list containing:
+\itemize{
+     \item   \code{db}:                   modified \code{db} data.frame with clone identifiers in the \code{clone_col} column. 
+     \item   \code{vjl_group_summ}:       data.frame of clones summary, e.g. size, V-gene, J-gene, junction lentgh,
+                                          and so on.
+     \item   \code{inter_intra}:          data.frame containing minimum inter (between) and maximum intra (within) 
+                                          clonal distances.
+     \item   \code{eff_threshold}:        effective cut-off separating the inter (between) and intra (within) clonal 
+                                          distances.
+     \item   \code{plot_inter_intra}:     ggplot histogram of inter (between) versus intra (within) clonal distances. The 
+                                          effective threshold is shown with a horizental dashed-line.
+}
+If \code{log_verbose} = \code{TRUE}, it will write verbose logging to a file in the current directory or 
+the specified \code{out_dir}.
 }
 \description{
-The \code{defineClonesScoper} function provides an unsupervised pipline for assigning Ig sequences into
-clonal groups sharing same V gene, J gene, and junction length.
+The \code{defineClonesScoper} function provides a computational pipline for assigning Ig 
+sequences into clonal groups sharing same V gene, J gene, and junction length.
 }
 \details{
-An unsupervised pipeline to identify B cell clones from adaptive immune receptor
-repertoire sequencing (AIRR-Seq) datasets. This method is based on spectral clustering
-of the junction sequences of B cell receptors (BCRs, also referred to as Immunoglobulins,
-(Igs)) that share the same V gene, J gene and junction length. It uses an adaptive
-threshold that analyzes sequences in a local neighborhood.
+\code{defineClonesScoper} provides a computational platform to explore the B cell clonal 
+relationships in high-throughput Adaptive Immune Receptor Repertoire sequencing (AIRR-seq) 
+data sets. Three models are included which perform clustering among sequences of B cell receptors 
+(BCRs, also referred to as Immunoglobulins, (Igs)) that share the same V gene, J gene and junction length: 
+\itemize{
+      \item \code{model} = \code{"identical"}: defines clones among identical junctions. Available \code{method}(s) are:
+      (1) \code{"nt"} (nucleotide based clustering) and (2) \code{"aa"} (amino acid based clustering).
+      \item \code{model} = \code{"hierarchical"}: hierarchical clustering-based method for partitioning sequences 
+      into clones. Availabe agglomeration \code{method}(s) are: (1) \code{"single"}, (2) \code{"average"}, and (3) 
+      \code{"complete"}. The fixed \code{threshold} (a numeric scalar where the tree should be cut) must be provided.
+      \item \code{model} = \code{"spectral"}: provides an unsupervised pipline for assigning Ig sequences into clonal 
+      groups. If \code{method} = \code{"novj"}, clonal relationships are inferred using an adaptive threshold that 
+      indicates the level of similarity among junction sequences in a local neighborhood. If \code{method} = \code{"vj"}: 
+      clonal relationships are inferred not only based on the junction region homology, but also takes into account 
+      the mutation profiles in the V and J segments. \code{germline_col} and \code{sequence_col} must be provided. 
+      Mutation counts are determined by comparing the input sequences (in the column specified by \code{sequence_col}) 
+      to the effective germline sequence (calculated from sequences in the column specified by \code{germline_col}). 
+      Not mandatory, but the influence of SHM hot- and cold-spot biases in the clonal inference process will be noted 
+      if a SHM targeting model is provided through argument \code{targeting_model} (see \link{createTargetingModel} 
+      for more technical details).
+}
 }
 \examples{
-# clone data using defineClonesScoper function
-db <- defineClonesScoper(ExampleDb, junction = "JUNCTION", v_call = "V_CALL",
-                         j_call = "J_CALL", first = TRUE)
-}
-\seealso{
-To assess the performance of clonal assignment process check \code{analyzeClones}.
+results <- defineClonesScoper(ExampleDb, 
+                              model="hierarchical", method="single", 
+                              threshold=0.15, summerize_clones=TRUE)
 }
