@@ -1,3 +1,34 @@
+Version 1.0.0: May 15, 2020
+-------------------------------------------------------------------------------
+
+Backwards Incompatible Changes:
+
++ Changed default expected data format from the Change-O data format to the
+  AIRR Rearrangement standard. For example: where functions used the column 
+  name `V_CALL` (Change-O) as the default to identify the field that stored 
+  the V gene calls, they now use `v_call` (AIRR). That means, scripts that 
+  relied on default values (previously, `v_call="V_CALL"`), will now fail if 
+  calls to the functions are not updated to reflect the correct value for the 
+  data. If data are in the Change-O format, the current default value 
+  `v_call="v_call"` will fail to identify the column with the V gene calls
+  as the column `v_call` doesn't exist. In this case, `v_call="V_CALL"` needs 
+  to be specified in the function call.
++ `ExampleDb` converted to the AIRR Rearrangement standard and examples updated 
+  accordingly.
++ Split `defineClonesScoper` function to three functions: `identicalClones`, 
+  `hierarchicalClones`, and `spectralClones`.
+  
+General:
+
++ License changed to AGPL-3.
+
+Cloning:
+
++ Fixed a platform precision incompatibility bug which caused spectral cloning
+  results to be non-reproducible across platforms.
++ Added largest distance-to-nearest filter to clustering process.
+
+
 Version 0.2.0:  August 5, 2019
 -------------------------------------------------------------------------------
 

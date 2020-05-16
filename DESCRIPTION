@@ -1,22 +1,25 @@
 Package: scoper
 Type: Package
-Version: 0.2.0
-Date: 2019-08-05
-Authors@R: c(person("Nima", "Nouri", role=c("aut", "cre"), 
+Version: 1.0.0
+Date: 2020-05-15
+Authors@R: c(person("Nima", "Nouri", role=c("aut"), 
                     email="nima.nouri@yale.edu"),
-             person("Jason", "Vander Heiden", role=c("ctb"), 
-                    email="jason.vanderheiden@yale.edu"), 
+             person("Edel", "Aron", role=c("ctb"), 
+                    email="edel.aron@yale.edu"),
+             person("Jason", "Vander Heiden", role=c("aut", "cre"), 
+                    email="jason.vanderheiden@gmail.com"),
              person("Steven", "Kleinstein", role=c("aut", "cph"), 
                     email="steven.kleinstein@yale.edu"))
 Title: Spectral Clustering-Based Method for Identifying B Cell Clones
-Description: Provides a computational framework for B cell clones identification 
-             from adaptive immune receptor repertoire sequencing (AIRR-Seq) datasets. 
-             Three models are included (identical, hierarchical, and spectral) 
+Description: Provides a computational framework for identification of B cell clones from 
+             Adaptive Immune Receptor Repertoire sequencing (AIRR-Seq) data. Three main 
+             functions are included (identicalClones, hierarchicalClones, and spectralClones) 
              that perform clustering among sequences of BCRs/IGs (B cell receptors/immunoglobulins) 
              which share the same V gene, J gene and junction length.
              Nouri N and Kleinstein SH (2018) <doi: 10.1093/bioinformatics/bty235>.
+             Nouri N and Kleinstein SH (2019) <doi: 10.1101/788620>.
              Gupta NT, et al. (2017) <doi: 10.4049/jimmunol.1601850>.
-License: CC BY-SA 4.0
+License: AGPL-3
 URL: https://scoper.readthedocs.io
 BugReports: https://bitbucket.org/kleinstein/scoper/issues
 LazyData: true
@@ -24,19 +27,20 @@ BuildVignettes: true
 VignetteBuilder: knitr
 Encoding: UTF-8
 SystemRequirements: C++11
-Depends: R (>= 3.1.2), ggplot2 (>= 3.2.0)
-Imports: alakazam (>= 0.3.0), shazam (>= 0.2.0), doParallel, foreach,
-        dplyr (>= 0.8.1), Rcpp (>= 0.12.12), seqinr, data.table,
-        stringi, stringr, methods, stats, rlang
+Depends: R (>= 3.5.0), ggplot2 (>= 3.2.0)
+Imports: alakazam (>= 1.0.0), shazam (>= 1.0.0), data.table,
+        doParallel, dplyr (>= 0.8.1), foreach, methods, Rcpp (>=
+        0.12.12), rlang, scales, stats, stringi
 LinkingTo: Rcpp
 Suggests: knitr, rmarkdown, testthat
-RoxygenNote: 6.1.1
+RoxygenNote: 7.1.0
 Collate: 'Data.R' 'Scoper.R' 'Functions.R' 'RcppExports.R'
 NeedsCompilation: yes
-Packaged: 2019-08-05 17:52:55 UTC; nima
-Author: Nima Nouri [aut, cre],
-  Jason Vander Heiden [ctb],
+Packaged: 2020-05-15 20:42:02 UTC; vandej27
+Author: Nima Nouri [aut],
+  Edel Aron [ctb],
+  Jason Vander Heiden [aut, cre],
   Steven Kleinstein [aut, cph]
-Maintainer: Nima Nouri <nima.nouri@yale.edu>
+Maintainer: Jason Vander Heiden <jason.vanderheiden@gmail.com>
 Repository: CRAN
-Date/Publication: 2019-08-05 21:50:02 UTC
+Date/Publication: 2020-05-16 22:20:03 UTC

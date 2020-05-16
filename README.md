@@ -1,14 +1,15 @@
 SCOPer
 -------------------------------------------------------------------------------
 
-SCOPer provides a computational framework for B cell clones identification
-from adaptive immune receptor repertoire sequencing (AIRR-Seq) datasets. 
-Three models are included (identical, hierarchical, and spectral) 
-that perform clustering among sequences of BCRs/IGs (B cell receptors/immunoglobulins) 
-which share the same V gene, J gene and junction length. SCOPer is part of the 
-[Immcantation](http://immcantation.readthedocs.io) analysis framework.
+SCOPer provides a computational framework for the identification of B cell 
+clonal relationships from Adaptive Immune Receptor Repertoire sequencing 
+(AIRR-Seq) data. It includes methods for assigning clonal identifiers using
+sequence identity, hierarchical clustering, and spectral clustering.
+SCOPer is part of the [Immcantation](http://immcantation.readthedocs.io) 
+analysis framework.
 
 Contact
 -------------------------------------------------------------------------------
 
-For help and questions please contact the [Immcantation Group](mailto:immcantation@googlegroups.com)
+For help and questions please contact the 
+[Immcantation Group](mailto:immcantation@googlegroups.com)
