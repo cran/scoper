@@ -1,3 +1,10 @@
+Version 1.0.1: May 24, 2020
+-------------------------------------------------------------------------------
+
++ Fixed a fatal error in `identicalClones`, `hierarchicalClones` and 
+  `spectralClones` when specifying `nproc` > 1.
+  
+  
 Version 1.0.0: May 15, 2020
 -------------------------------------------------------------------------------
 

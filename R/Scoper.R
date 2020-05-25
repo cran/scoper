@@ -32,28 +32,26 @@
 #'   confidence in Ig repertoire sequencing data. The Journal of Immunology, 198(6):2489-2499.
 #' }
 #'
+#' @import      ggplot2
+#' @import      graphics
 #' @import      methods
-#' @importFrom  ggplot2     ggplot aes_string 
-#'                          theme theme_bw element_text element_blank element_rect
-#'                          ggtitle xlab ylab coord_flip coord_cartesian
-#'                          scale_fill_manual geom_density
-#'                          scale_x_continuous scale_y_continuous 
-#'                          geom_polygon geom_histogram geom_hline geom_vline
-#' @importFrom  dplyr       n %>% filter select arrange 
-#'                          group_by ungroup group_indices
-#'                          mutate summarize slice 
-#' @importFrom  stringi     stri_split_fixed stri_length stri_count
-#' @importFrom  data.table  as.data.table .I
-#' @importFrom  doParallel  registerDoParallel
-#' @importFrom  foreach     foreach %dopar% registerDoSEQ
-#' @importFrom  scales      pretty_breaks
+#' @import      utils
 #' @importFrom  alakazam    pairwiseDist checkColumns getDNAMatrix getAAMatrix
 #'                          padSeqEnds progressBar groupGenes baseTheme translateDNA
+#' @importFrom  data.table  as.data.table .I
+#' @importFrom  doParallel  registerDoParallel
+#' @importFrom  dplyr       n filter select arrange 
+#'                          group_by ungroup group_indices
+#'                          mutate summarize slice 
+#' @importFrom  foreach     foreach %dopar% registerDoSEQ
+#' @importFrom  magrittr    %>%
+#' @importFrom  rlang       sym syms
+#' @importFrom  Rcpp        evalCpp
+#' @importFrom  scales      pretty_breaks
 #' @importFrom  shazam      consensusSequence
 #' @importFrom  stats       density kmeans sd cor
 #'                          as.dist hclust cutree
-#' @importFrom  rlang       sym syms
-#' @importFrom  Rcpp        evalCpp
+#' @importFrom  stringi     stri_split_fixed stri_length stri_count
 #' @useDynLib   scoper, .registration=TRUE
 NULL
 

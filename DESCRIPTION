@@ -1,7 +1,7 @@
 Package: scoper
 Type: Package
-Version: 1.0.0
-Date: 2020-05-15
+Version: 1.0.1
+Date: 2020-05-24
 Authors@R: c(person("Nima", "Nouri", role=c("aut"), 
                     email="nima.nouri@yale.edu"),
              person("Edel", "Aron", role=c("ctb"), 
@@ -28,19 +28,19 @@ VignetteBuilder: knitr
 Encoding: UTF-8
 SystemRequirements: C++11
 Depends: R (>= 3.5.0), ggplot2 (>= 3.2.0)
-Imports: alakazam (>= 1.0.0), shazam (>= 1.0.0), data.table,
-        doParallel, dplyr (>= 0.8.1), foreach, methods, Rcpp (>=
-        0.12.12), rlang, scales, stats, stringi
+Imports: alakazam (>= 1.0.1), shazam (>= 1.0.0), data.table,
+        doParallel, dplyr (>= 0.8.1), foreach, magrittr, methods, Rcpp
+        (>= 0.12.12), rlang, scales, stats, stringi
 LinkingTo: Rcpp
 Suggests: knitr, rmarkdown, testthat
 RoxygenNote: 7.1.0
 Collate: 'Data.R' 'Scoper.R' 'Functions.R' 'RcppExports.R'
 NeedsCompilation: yes
-Packaged: 2020-05-15 20:42:02 UTC; vandej27
+Packaged: 2020-05-25 19:13:32 UTC; vandej27
 Author: Nima Nouri [aut],
   Edel Aron [ctb],
   Jason Vander Heiden [aut, cre],
   Steven Kleinstein [aut, cph]
 Maintainer: Jason Vander Heiden <jason.vanderheiden@gmail.com>
 Repository: CRAN
-Date/Publication: 2020-05-16 22:20:03 UTC
+Date/Publication: 2020-05-25 19:40:02 UTC
