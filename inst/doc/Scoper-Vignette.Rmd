@@ -138,7 +138,7 @@ provided as input to `hierarchicalClones`.
 results_db <- as.data.frame(results)
 glimpse(results_db)
 
-# Plot a histogram of inter clonal distances
+# Plot a histogram of inter and intra clonal distances
 plot(results, binwidth=0.02)
 
 # Get summary data.frame
@@ -164,8 +164,9 @@ It is not mandatory, but a fixed threshold can also be provided to `spectralClon
 (`threshold` argument) which will enforce an upper-limit cut-off. When specifying the `threshold` 
 argument, any sequence with distances above the threshold value from all sequences will become a 
 singleton. The threshold can be defined as discussed above using nearest-neighbor distance 
-distribution methods provided in the [shazam](https://shazam.readthedocs.io).
-Technical details can be found in:
+distribution methods provided in the [shazam](https://shazam.readthedocs.io). If `method="vj"`, 
+the `threshold` will be applied on the distances calculated combining junction region homology 
+and V/J mutation profiles. Technical details can be found in:
 
     Nouri N and Kleinstein SH (2018). A spectral clustering-based method for
         identifying clones from high-throughput B cell repertoire sequencing data.
@@ -175,25 +176,39 @@ Technical details can be found in:
         identification of B cell clonal families from next-generation sequencing data,
         bioRxiv doi: 10.1101/788620.
 
-The following example calls the `spectralClones` function using the same (optional) threshold used 
-previously to defined clones using the hierachical approach:
+The following examples calls the `spectralClones` function with(out) the same 
+(optional) threshold used previously to define clones using the hierachical approach.
+The results data.frame, summary plots, and summary table are accessed in the 
+same manner as shown above using the hierachical approach.
 
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
-# Clonal assignment using the spectral clustering
+# Clonal assignment using the spectral clustering method novj
+results <- spectralClones(ExampleDb, method="novj")
+# Plot a histogram of inter and intra clonal distances
+plot(results, binwidth=0.02)
+```
+
+```{r, eval=TRUE, warning=FALSE, message=FALSE}
+# Clonal assignment using the spectral clustering method novj with threshold
+results <- spectralClones(ExampleDb, method="novj",
+                          threshold=0.15)
+# Plot a histogram of inter and intra clonal distances
+plot(results, binwidth=0.02)
+```
+
+```{r, eval=TRUE, warning=FALSE, message=FALSE}
+# Clonal assignment using the spectral clustering method vj with threshold
 results <- spectralClones(ExampleDb, method="vj",
                           threshold=0.15,
                           germline="germline_alignment_d_mask")
 ```
-
-The results data.frame, summary plots, and summary table are accessed in the same manner as shown 
-above using the hierachical approach.
 
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
 # Get results data.frame
 results_db <- as.data.frame(results)
 glimpse(results_db)
 
-# Plot a histogram of inter clonal distances
+# Plot a histogram of inter and intra clonal distances
 plot(results, binwidth=0.02)
 
 # Get summary data.frame

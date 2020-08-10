@@ -2,7 +2,7 @@
 % Please edit documentation in R/Functions.R
 \name{identicalClones}
 \alias{identicalClones}
-\title{Identical clustering-based method for partitioning Ig sequences into clones.}
+\title{Sequence identity method for clonal partitioning}
 \usage{
 identicalClones(
   db,
@@ -11,6 +11,10 @@ identicalClones(
   v_call = "v_call",
   j_call = "j_call",
   clone = "clone_id",
+  cell_id = NULL,
+  locus = "locus",
+  only_heavy = TRUE,
+  split_light = TRUE,
   first = FALSE,
   cdr3 = FALSE,
   mod3 = FALSE,
@@ -35,6 +39,22 @@ Also used to determine sequence length for grouping.}
 \item{j_call}{character name of the column containing the J-segment allele calls.}
 
 \item{clone}{the output column name containing the clonal clustering identifiers.}
+
+\item{cell_id}{name of the column containing cell identifiers or barcodes. 
+If specified, grouping will be performed in single-cell mode
+with the behavior governed by the \code{locus} and 
+\code{only_heavy} arguments. If set to \code{NULL} then the 
+bulk sequencing data is assumed.}
+
+\item{locus}{name of the column containing locus information. 
+Only applicable to single-cell data.
+Ignored if \code{cell_id=NULL}.}
+
+\item{only_heavy}{use only the IGH (BCR) or TRB/TRD (TCR) sequences 
+for grouping. Only applicable to single-cell data.
+Ignored if \code{cell_id=NULL}.}
+
+\item{split_light}{split clones by light chains. Ignored if \code{cell_id=NULL}.}
 
 \item{first}{specifies how to handle multiple V(D)J assignments for initial grouping. 
 If \code{TRUE} only the first call of the gene assignments is used. 
@@ -74,15 +94,36 @@ If \code{summarize_clones=FALSE} modified \code{data.frame} is returned with clo
 specified \code{clone} column.
 }
 \description{
-The \code{identicalClones} function provides a computational pipline for assigning Ig 
-sequences into clonal groups sharing same V gene, J gene, and identical junction.
+\code{identicalClones} provides a simple sequence identity based partitioning 
+approach for inferring clonal relationships in high-throughput Adaptive Immune Receptor 
+Repertoire sequencing (AIRR-seq) data. This approach partitions B or T cell receptor 
+sequences into clonal groups based on junction region sequence identity within 
+partitions that share the same V gene, J gene, and junction length, allowing for 
+ambiguous V or J gene annotations.
 }
-\details{
-\code{identicalClones} provides a computational platform to explore the B cell clonal 
-relationships in high-throughput Adaptive Immune Receptor Repertoire sequencing (AIRR-seq) 
-data sets. This function performs clustering among sequences of B cell receptors 
-(BCRs, immunoglobulins, Ig) that share the same V gene, J gene, and identical junction:
+\section{Single-cell data}{
+
+To invoke single-cell mode the \code{cell_id} argument must be specified and the \code{locus} 
+column must be correct. Otherwise, clustering will be performed with bulk sequencing assumptions, 
+using all input sequences regardless of the values in the \code{locus} column.
+
+Values in the \code{locus} column must be one of \code{c("IGH", "IGI", "IGK", "IGL")} for BCR 
+or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
+return and error message.
+
+Under single-cell mode with paired-chain sequences, there is a choice of whether 
+grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
+(b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
+This is governed by the \code{only_heavy} argument. There is also choice as to whether 
+inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
+heavy/long chain clustering, which is governed by the \code{split_light} argument.
+
+In single-cell mode, clonal clustering will not be performed on data were cells are 
+assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 
+will exit and return an error message. Cells that lack a heavy/long chain sequence (i.e., cells with 
+light/short chains only) will be assigned a \code{clone_id} of \code{NA}.
 }
+
 \examples{
 # Find clonal groups
 results <- identicalClones(ExampleDb)
@@ -95,5 +136,6 @@ plot(results, binwidth=0.02)
 
 }
 \seealso{
-See \link{plotCloneSummary} plotting summary results.
+See \link{plotCloneSummary} for plotting summary results. See \link{groupGenes} for 
+more details about grouping requirements.
 }

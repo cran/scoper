@@ -1,3 +1,11 @@
+Version 1.1.0: August 10, 2020
+-------------------------------------------------------------------------------
+
++ Fixed a bug in the clonal clustering methods causing TCR data to fail.
++ Added support for single-cell data in the clonal clustering methods, which
+  are enabled by defining the optional `cell_id` column.
+
+
 Version 1.0.1: May 24, 2020
 -------------------------------------------------------------------------------
 

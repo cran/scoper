@@ -186,7 +186,8 @@ pairwiseMutions <- function(germ_imgt,
                             junc_length, 
                             len_limit = NULL,
                             cdr3 = FALSE,
-                            mutabs = NULL) {
+                            mutabs = NULL,
+                            norm_fact = TRUE) {
     
     ##### get number of seqs
     n <- unique(c(length(seq_imgt), length(germ_imgt)))
@@ -259,7 +260,11 @@ pairwiseMutions <- function(germ_imgt,
         if ( eff_germ_lent > lenConsensus)  { eff_germ <- substr( eff_germ, start = 1, stop = lenConsensus) }  
     }
     ##### count informative positions
-    informative_pos <- sapply(1:n, function(x){ sum(stri_count(seq_imgt[x], fixed = c("A","C","G","T"))) })
+    if (norm_fact) {
+        informative_pos <- sapply(1:n, function(x){ sum(stri_count(seq_imgt[x], fixed = c("A","C","G","T"))) })   
+    } else {
+        informative_pos <- rep(1, n)
+    }
     ##### convert eff_germ and seq_imgt to matrices
     seqsMtx <- matrix(NA, nrow=n, ncol=lenConsensus)
     effMtx <- matrix(NA, nrow=n, ncol=lenConsensus)
@@ -310,6 +315,19 @@ pairwiseMutions <- function(germ_imgt,
 # *****************************************************************************
 
 # *****************************************************************************
+### make a dataframe of unique seqs in each clone
+uniqueSeq <- function(seqs) {
+    seqs_db <- data.frame(value = seqs, name = names(seqs), stringsAsFactors = FALSE) %>%
+        dplyr::group_by(!!!rlang::syms(c("name", "value"))) %>% # alternatively: group_by(name) if name value pair is always unique
+        dplyr::slice(1) %>%
+        dplyr::ungroup()
+    seqs <- seqs_db$value
+    names(seqs) <- seqs_db$name
+    return(seqs)
+}
+# *****************************************************************************
+
+# *****************************************************************************
 # inter-clone-distance vs intra-clone-distance
 calculateInterVsIntra <- function(db,
                                   clone,
@@ -333,7 +351,7 @@ calculateInterVsIntra <- function(db,
     
     ### expoer function to clusters
     if (nproc > 1) { 
-        export_functions <- list("pairwiseDist", "getDNAMatrix")
+        export_functions <- list("pairwiseDist", "getDNAMatrix", "uniqueSeq")
         parallel::clusterExport(cluster, export_functions, envir=environment())
     }
     
@@ -347,7 +365,6 @@ calculateInterVsIntra <- function(db,
     # open dataframes
     vec_ff <- foreach(k=1:n_groups,
                       .combine="c",
-                      .packages=c("dplyr", "magrittr"),
                       .errorhandling='stop') %dopar% {
                           
                           # *********************************************************************************
@@ -356,13 +373,7 @@ calculateInterVsIntra <- function(db,
                           n_clones <- length(clones)
                           seqs <- db[[ifelse(cdr3, cdr3_col, junction)]][db[[clone]] %in% clones]
                           names(seqs) <- db[[clone]][db[[clone]] %in% clones]
-                          ### make a dataframe of unique seqs in each clone
-                          seqs_db <- data.frame(value = seqs, name = names(seqs), stringsAsFactors = FALSE) %>%
-                              dplyr::group_by(!!!rlang::syms(c("name", "value"))) %>% # alternatively: group_by(name) if name value pair is always unique
-                              slice(1) %>%
-                              ungroup()
-                          seqs <- seqs_db$value
-                          names(seqs) <- seqs_db$name
+                          seqs <- uniqueSeq(seqs)
                           ### calculate distance matrix among all seqs
                           dist_mtx <- pairwiseDist(seqs, dist_mat=getDNAMatrix(gap = 0))
                           ### prealoocate a vector = no. of max-dist in each clone (intra) + no. of min-dist between clones (inter)
@@ -464,6 +475,7 @@ logVerbose <- function(out_dir, log_verbose_name,
 prepare_db <- function(db, 
                        junction = "junction", v_call = "v_call", j_call = "j_call",
                        first = FALSE, cdr3 = FALSE, 
+                       cell_id = NULL, locus = NULL, only_heavy = TRUE,
                        mod3 = FALSE, max_n = 0) {
     # add junction length column
     db$junction_l <- stri_length(db[[junction]])
@@ -507,6 +519,10 @@ prepare_db <- function(db,
     db <- groupGenes(db,
                      v_call = v_call,
                      j_call = j_call,
+                     junc_len = NULL,
+                     cell_id = cell_id,
+                     locus = locus,
+                     only_heavy = only_heavy,
                      first = first)
     
     ### groups to use
@@ -672,10 +688,14 @@ plotCloneSummary <- function(data, xmin=NULL, xmax=NULL, breaks=NULL,
 
 #### identicalClones ####
 
-#' Identical clustering-based method for partitioning Ig sequences into clones.
+#' Sequence identity method for clonal partitioning
 #'
-#' The \code{identicalClones} function provides a computational pipline for assigning Ig 
-#' sequences into clonal groups sharing same V gene, J gene, and identical junction.
+#' \code{identicalClones} provides a simple sequence identity based partitioning 
+#' approach for inferring clonal relationships in high-throughput Adaptive Immune Receptor 
+#' Repertoire sequencing (AIRR-seq) data. This approach partitions B or T cell receptor 
+#' sequences into clonal groups based on junction region sequence identity within 
+#' partitions that share the same V gene, J gene, and junction length, allowing for 
+#' ambiguous V or J gene annotations.
 #'
 #' @param    db                 data.frame containing sequence data.
 #' @param    method             one of the \code{"nt"} for nucleotide based clustering or 
@@ -685,6 +705,18 @@ plotCloneSummary <- function(data, xmin=NULL, xmax=NULL, breaks=NULL,
 #' @param    v_call             character name of the column containing the V-segment allele calls.
 #' @param    j_call             character name of the column containing the J-segment allele calls.
 #' @param    clone              the output column name containing the clonal clustering identifiers.
+#' @param    cell_id            name of the column containing cell identifiers or barcodes. 
+#'                              If specified, grouping will be performed in single-cell mode
+#'                              with the behavior governed by the \code{locus} and 
+#'                              \code{only_heavy} arguments. If set to \code{NULL} then the 
+#'                              bulk sequencing data is assumed.
+#' @param    locus              name of the column containing locus information. 
+#'                              Only applicable to single-cell data.
+#'                              Ignored if \code{cell_id=NULL}.
+#' @param    only_heavy         use only the IGH (BCR) or TRB/TRD (TCR) sequences 
+#'                              for grouping. Only applicable to single-cell data.
+#'                              Ignored if \code{cell_id=NULL}.
+#' @param    split_light        split clones by light chains. Ignored if \code{cell_id=NULL}.
 #' @param    first              specifies how to handle multiple V(D)J assignments for initial grouping. 
 #'                              If \code{TRUE} only the first call of the gene assignments is used. 
 #'                              If \code{FALSE} the union of ambiguous gene assignments is used to 
@@ -715,13 +747,29 @@ plotCloneSummary <- function(data, xmin=NULL, xmax=NULL, breaks=NULL,
 #' If \code{summarize_clones=FALSE} modified \code{data.frame} is returned with clone identifiers in the 
 #' specified \code{clone} column.
 #' 
-#' @details
-#' \code{identicalClones} provides a computational platform to explore the B cell clonal 
-#' relationships in high-throughput Adaptive Immune Receptor Repertoire sequencing (AIRR-seq) 
-#' data sets. This function performs clustering among sequences of B cell receptors 
-#' (BCRs, immunoglobulins, Ig) that share the same V gene, J gene, and identical junction: 
+#' @section Single-cell data:
+#' To invoke single-cell mode the \code{cell_id} argument must be specified and the \code{locus} 
+#' column must be correct. Otherwise, clustering will be performed with bulk sequencing assumptions, 
+#' using all input sequences regardless of the values in the \code{locus} column.
+#' 
+#' Values in the \code{locus} column must be one of \code{c("IGH", "IGI", "IGK", "IGL")} for BCR 
+#' or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
+#' return and error message.
+#' 
+#' Under single-cell mode with paired-chain sequences, there is a choice of whether 
+#' grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
+#' (b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
+#' This is governed by the \code{only_heavy} argument. There is also choice as to whether 
+#' inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
+#' heavy/long chain clustering, which is governed by the \code{split_light} argument.
+#' 
+#' In single-cell mode, clonal clustering will not be performed on data were cells are 
+#' assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 
+#' will exit and return an error message. Cells that lack a heavy/long chain sequence (i.e., cells with 
+#' light/short chains only) will be assigned a \code{clone_id} of \code{NA}.
 #'
-#' @seealso  See \link{plotCloneSummary} plotting summary results.
+#' @seealso See \link{plotCloneSummary} for plotting summary results. See \link{groupGenes} for 
+#' more details about grouping requirements.
 #'
 #' @examples
 #' # Find clonal groups
@@ -736,6 +784,7 @@ plotCloneSummary <- function(data, xmin=NULL, xmax=NULL, breaks=NULL,
 #' @export
 identicalClones <- function(db, method=c("nt", "aa"), junction="junction", 
                             v_call="v_call", j_call="j_call", clone="clone_id",
+                            cell_id=NULL, locus="locus", only_heavy=TRUE, split_light=TRUE,
                             first=FALSE, cdr3=FALSE, mod3=FALSE, max_n=0, nproc=1,
                             verbose=FALSE, log=NULL, 
                             summarize_clones=TRUE) {
@@ -743,6 +792,7 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
     results <- defineClonesScoper(db = db,
                                   method = match.arg(method), model = "identical", 
                                   junction = junction, v_call = v_call, j_call = j_call, clone = clone,
+                                  cell_id = cell_id, locus = locus, only_heavy = only_heavy, split_light = split_light,
                                   first = first, cdr3 = cdr3, mod3 = mod3, max_n = max_n, nproc = nproc,        
                                   verbose = verbose, log = log, 
                                   summarize_clones = summarize_clones)
@@ -764,11 +814,13 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 
 #### hierarchicalClones ####
 
-#' Hierarchical clustering-based method for partitioning Ig sequences into clones.
+#' Hierarchical clustering method for clonal partitioning
 #'
-#' The \code{hierarchicalClones} function provides a computational pipline for assigning Ig 
-#' sequences into clonal groups sharing same V gene, J gene, and junction length, based on the 
-#' junction sequence similarity.
+#' \code{hierarchicalClones} provides a hierarchical agglomerative clustering 
+#' approach to infer clonal relationships in high-throughput Adaptive Immune Receptor 
+#' Repertoire sequencing (AIRR-seq) data. This approach clusters B or T cell receptor 
+#' sequences based on junction region sequence similarity within partitions that share the 
+#' same V gene, J gene, and junction length, allowing for ambiguous V or J gene annotations.
 #'
 #' @param    db                 data.frame containing sequence data.
 #' @param    threshold          a numeric scalar where the tree should be cut (the distance threshold for clonal grouping).
@@ -782,6 +834,18 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 #' @param    v_call             character name of the column containing the V-segment allele calls.
 #' @param    j_call             character name of the column containing the J-segment allele calls.
 #' @param    clone              the output column name containing the clonal cluster identifiers.
+#' @param    cell_id            name of the column containing cell identifiers or barcodes. 
+#'                              If specified, grouping will be performed in single-cell mode
+#'                              with the behavior governed by the \code{locus} and 
+#'                              \code{only_heavy} arguments. If set to \code{NULL} then the 
+#'                              bulk sequencing data is assumed.
+#' @param    locus              name of the column containing locus information. 
+#'                              Only applicable to single-cell data.
+#'                              Ignored if \code{cell_id=NULL}.
+#' @param    only_heavy         use only the IGH (BCR) or TRB/TRD (TCR) sequences 
+#'                              for grouping. Only applicable to single-cell data.
+#'                              Ignored if \code{cell_id=NULL}.
+#' @param    split_light        split clones by light chains. Ignored if \code{cell_id=NULL}.
 #' @param    first              specifies how to handle multiple V(D)J assignments for initial grouping. 
 #'                              If \code{TRUE} only the first call of the gene assignments is used. 
 #'                              If \code{FALSE} the union of ambiguous gene assignments is used to 
@@ -814,14 +878,30 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 #' If \code{summarize_clones=FALSE} modified \code{data.frame} is returned with clone identifiers in the 
 #' specified \code{clone} column.
 #' 
-#' @details
-#' \code{hierarchicalClones} provides a computational platform to explore the B cell clonal 
-#' relationships in high-throughput Adaptive Immune Receptor Repertoire sequencing (AIRR-seq) 
-#' data sets. This function performs hierarchical clustering among sequences of B cell receptors 
-#' (BCRs, immunoglobulins, Ig) that share the same V gene, J gene, and junction length 
-#' based on the junction sequence similarity: 
-#'
-#' @seealso  See \link{plotCloneSummary} plotting summary results.
+#' @section Single-cell data:
+#' To invoke single-cell mode the \code{cell_id} argument must be specified and the \code{locus} 
+#' column must be correct. Otherwise, clustering will be performed with bulk sequencing assumptions, 
+#' using all input sequences regardless of the values in the \code{locus} column.
+#' 
+#' Values in the \code{locus} column must be one of \code{c("IGH", "IGI", "IGK", "IGL")} for BCR 
+#' or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
+#' return and error message.
+#' 
+#' Under single-cell mode with paired-chain sequences, there is a choice of whether 
+#' grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
+#' (b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
+#' This is governed by the \code{only_heavy} argument. There is also choice as to whether 
+#' inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
+#' heavy/long chain clustering, which is governed by the \code{split_light} argument.
+#' 
+#' In single-cell mode, clonal clustering will not be performed on data were cells are 
+#' assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 
+#' will exit and return an error message. Cells that lack a heavy/long chain sequence (i.e., cells with 
+#' light/short chains only) will be assigned a \code{clone_id} of \code{NA}.
+#' 
+#' @seealso 
+#' See \link{plotCloneSummary} for plotting summary results. See \link{groupGenes} for 
+#' more details about grouping requirements.
 #'
 #' @examples
 #' # Find clonal groups
@@ -837,6 +917,7 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("single", "average", "complete"), 
                                normalize=c("len", "none"), junction="junction", 
                                v_call="v_call", j_call="j_call", clone="clone_id",
+                               cell_id=NULL, locus="locus", only_heavy=TRUE, split_light=TRUE,
                                first=FALSE, cdr3=FALSE, mod3=FALSE, max_n=0, nproc=1,
                                verbose=FALSE, log=NULL,
                                summarize_clones=TRUE) {
@@ -844,6 +925,7 @@ hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("s
     results <- defineClonesScoper(db = db, threshold = threshold, model = "hierarchical", 
                                   method = match.arg(method), linkage = match.arg(linkage), normalize = match.arg(normalize),
                                   junction = junction, v_call = v_call, j_call = j_call, clone = clone,
+                                  cell_id = cell_id, locus = locus, only_heavy = only_heavy, split_light = split_light,
                                   first = first, cdr3 = cdr3, mod3 = mod3, max_n = max_n, nproc = nproc,   
                                   verbose = verbose, log = log, 
                                   summarize_clones = summarize_clones)
@@ -863,11 +945,14 @@ hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("s
 
 #### spectralClones ####
 
-#' Spectral clustering-based method for partitioning Ig sequences into clones.
+#' Spectral clustering method for clonal partitioning
 #'
-#' The \code{spectralClones} function provides an unsupervised computational pipline for 
-#' assigning Ig sequences into clonal groups sharing same V gene, J gene, and junction 
-#' length, based on the junction sequence similarity and shared mutations in V and J segments.
+#' \code{spectralClones} provides an unsupervised spectral clustering 
+#' approach to infer clonal relationships in high-throughput Adaptive Immune Receptor 
+#' Repertoire sequencing (AIRR-seq) data. This approach clusters B or T cell receptor 
+#' sequences based on junction region sequence similarity and shared mutations within 
+#' partitions that share the same V gene, J gene, and junction length, allowing for 
+#' ambiguous V or J gene annotations.
 #'
 #' @param    db                 data.frame containing sequence data.
 #' @param    method             one of the \code{"novj"} or \code{"vj"}. See Details for description.
@@ -878,8 +963,20 @@ hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("s
 #' @param    v_call             character name of the column containing the V-segment allele calls.
 #' @param    j_call             character name of the column containing the J-segment allele calls.
 #' @param    clone              the output column name containing the clone ids.
-#' @param    targeting_model    \link{TargetingModel} object. Only applicable if \code{method} = \code{"vj"}. 
-#'                              See Details for description.
+#' @param    cell_id            name of the column containing cell identifiers or barcodes. 
+#'                              If specified, grouping will be performed in single-cell mode
+#'                              with the behavior governed by the \code{locus} and 
+#'                              \code{only_heavy} arguments. If set to \code{NULL} then the 
+#'                              bulk sequencing data is assumed.
+#' @param    locus              name of the column containing locus information. 
+#'                              Only applicable to single-cell data.
+#'                              Ignored if \code{cell_id=NULL}.
+#' @param    only_heavy         use only the IGH (BCR) or TRB/TRD (TCR) sequences 
+#'                              for grouping. Only applicable to single-cell data.
+#'                              Ignored if \code{cell_id=NULL}.
+#' @param    split_light        split clones by light chains. Ignored if \code{cell_id=NULL}.
+#' @param    targeting_model    \link[shazam]{TargetingModel} object. Only applicable if 
+#'                              \code{method="vj"}. See Details for description.
 #' @param    len_limit          \link{IMGT_V} object defining the regions and boundaries of the Ig 
 #'                              sequences. If NULL, mutations are counted for entire sequence. Only 
 #'                              applicable if \code{method} = \code{"vj"}.
@@ -919,28 +1016,48 @@ hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("s
 #' specified \code{clone} column.
 #'
 #' @details
-#' \code{spectralClones} provides a computational platform to explore the B cell clonal 
-#' relationships in high-throughput Adaptive Immune Receptor Repertoire sequencing (AIRR-seq) 
-#' data sets. Two methods are included to perform clustering among sequences of B cell receptors 
-#' (BCRs, immunoglobulins, Ig) that share the same V gene, J gene and junction length: 
-#' \itemize{
-#'       \item If \code{method} = \code{"novj"}: clonal relationships are inferred using an adaptive 
-#'       threshold that indicates the level of similarity among junction sequences in a local neighborhood. 
-#'       \item If \code{method} = \code{"vj"}: clonal relationships are inferred not only based on 
-#'       the junction region homology, but also takes into account the mutation profiles in the V 
-#'       and J segments. Mutation counts are determined by comparing the input sequences (in the 
-#'       column specified by \code{sequence}) to the effective germline sequence (IUPAC representation 
-#'       of sequences in the column specified by \code{germline}). \item Not mandatory, but the 
-#'       influence of SHM hot- and cold-spot biases in the clonal inference process will be noted 
-#'       if a SHM targeting model is provided through argument \code{targeting_model} 
-#'       (see \link{createTargetingModel} for more technical details). 
-#'       \item Not mandatory, but the upper-limit cut-off for clonal grouping can be provided to
-#'       prevent sequences with disimilarity above the threshold group together. Using this argument 
-#'       any sequence with distances above the \code{threshold} value from other sequences, will 
-#'       become a singleton.
-#' }
+#' If \code{method="novj"}, then clonal relationships are inferred using an adaptive 
+#' threshold that indicates the level of similarity among junction sequences in a local neighborhood. 
+#' 
+#' If \code{method="vj"}, then clonal relationships are inferred not only on 
+#' junction region homology, but also taking into account the mutation profiles in the V 
+#' and J segments. Mutation counts are determined by comparing the input sequences (in the 
+#' column specified by \code{sequence}) to the effective germline sequence (IUPAC representation 
+#' of sequences in the column specified by \code{germline}). 
+#' 
+#' While not mandatory, the influence of SHM hot-/cold-spot biases in the clonal inference 
+#' process will be noted if a SHM targeting model is provided through the \code{targeting_model} 
+#' argument. See \link[shazam]{TargetingModel} for more technical details.
+#' 
+#' If the \code{threshold} argument is specified, then an upper limit for clonal grouping will 
+#' be imposed to prevent sequences with dissimilarity above the threshold from grouping together. 
+#' Any sequence with a distance greater than the \code{threshold} value from the other sequences, 
+#' will be assigned to a singleton group.
+#' 
+#' @section Single-cell data:
+#' To invoke single-cell mode the \code{cell_id} argument must be specified and the \code{locus} 
+#' column must be correct. Otherwise, clustering will be performed with bulk sequencing assumptions, 
+#' using all input sequences regardless of the values in the \code{locus} column.
+#' 
+#' Values in the \code{locus} column must be one of \code{c("IGH", "IGI", "IGK", "IGL")} for BCR 
+#' or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
+#' return and error message.
+#' 
+#' Under single-cell mode with paired-chain sequences, there is a choice of whether 
+#' grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
+#' (b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
+#' This is governed by the \code{only_heavy} argument. There is also choice as to whether 
+#' inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
+#' heavy/long chain clustering, which is governed by the \code{split_light} argument.
+#' 
+#' In single-cell mode, clonal clustering will not be performed on data were cells are 
+#' assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 
+#' will exit and return an error message. Cells that lack a heavy/long chain sequence (i.e., cells with 
+#' light/short chains only) will be assigned a \code{clone_id} of \code{NA}.
 #'
-#' @seealso  See \link{plotCloneSummary} plotting summary results.
+#' @seealso
+#' See \link{plotCloneSummary} for plotting summary results. See \link{groupGenes} for 
+#' more details about grouping requirements.
 #'
 #' @examples
 #' # Subset example data
@@ -958,6 +1075,7 @@ hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("s
 #' @export
 spectralClones <- function(db, method=c("novj", "vj"), germline="germline_alignment", sequence="sequence_alignment",
                            junction="junction", v_call="v_call", j_call="j_call", clone="clone_id",
+                           cell_id=NULL, locus="locus", only_heavy=TRUE, split_light=TRUE,
                            targeting_model=NULL, len_limit=NULL, first=FALSE, cdr3=FALSE, mod3=FALSE, max_n=0, 
                            threshold=NULL, base_sim=0.95, iter_max=1000,  nstart=1000, nproc=1,
                            verbose=FALSE, log=NULL,
@@ -966,6 +1084,7 @@ spectralClones <- function(db, method=c("novj", "vj"), germline="germline_alignm
     results <- defineClonesScoper(db = db, method = match.arg(method), model = "spectral", 
                                   germline = germline, sequence = sequence,
                                   junction = junction, v_call = v_call, j_call = j_call, clone = clone, 
+                                  cell_id = cell_id, locus = locus, only_heavy = only_heavy, split_light = split_light,
                                   targeting_model = targeting_model, len_limit = len_limit,
                                   first = first, cdr3 = cdr3, mod3 = mod3, max_n = max_n,
                                   threshold = threshold, base_sim = base_sim,
@@ -995,6 +1114,7 @@ defineClonesScoper <- function(db,
                                linkage = c("single", "average", "complete"), normalize = c("len", "none"),
                                germline = "germline_alignment", sequence = "sequence_alignment",
                                junction = "junction", v_call = "v_call", j_call = "j_call", clone = "clone_id",
+                               cell_id = NULL, locus = NULL, only_heavy = TRUE, split_light = TRUE,
                                targeting_model = NULL, len_limit = NULL,
                                first = FALSE, cdr3 = FALSE, mod3 = FALSE, max_n = 0, 
                                threshold = NULL, base_sim = 0.95,
@@ -1037,7 +1157,9 @@ defineClonesScoper <- function(db,
         if (!method %in% c("novj", "vj")) { 
             stop(paste0("'method' should be one of 'novj' or 'vj' for model '", model, "'.")) 
         }
-    } 
+    }  else {
+        stop("model must be one of 'identical', 'hierarchical', or 'spectral'.")
+    }
     
     ### Check for invalid characters
     valid_chars <- colnames(getDNAMatrix(gap = 0))
@@ -1061,20 +1183,51 @@ defineClonesScoper <- function(db,
     
     ### Check general required columns
     columns <- c(junction, v_call, j_call) #, fields
-    columns <- columns[!is.null(columns)]
     check <- checkColumns(db, columns)
-    if (!check) { 
-        stop("columns ", paste(columns, collapse = " and "), " are not found.") 
+    if (is.character(check)) { 
+        stop(check)
     }
     
     ### Check required columns for method "vj"
     if (model == "spectral" & method == "vj") {
         columns <- c(germline, sequence) #, fields
-        columns <- columns[!is.null(columns)]
-        check_ham_mut <- checkColumns(db, columns)
-        if (!check_ham_mut) { 
-            stop("columns ", paste(columns, collapse = " and "), " are not found.") 
+        check <- checkColumns(db, columns)
+        if (is.character(check)) { 
+            stop(check)
         }
+    } 
+    
+    ### Check single-cell mode
+    single_cell <- FALSE
+    if (!is.null(cell_id) & !is.null(locus)) {
+        # Check required columns for single-cell mode
+        columns <- c(cell_id, locus) #, fields
+        check <- checkColumns(db, columns)
+        if (check != TRUE) { stop(check) }
+        
+        # check locus column
+        valid_loci <- c("IGH", "IGI", "IGK", "IGL", "TRA", "TRB", "TRD", "TRG")
+        check <- !all(unique(db[[locus]]) %in% valid_loci)
+        if (check) {
+            stop("The locus column contains invalid loci annotations.")
+        }
+        # check multiple heavy chains
+        x <- sum(table(db[[cell_id]][db[[locus]] == "IGH"]) > 1)
+        if (x > 0) {
+            stop(paste(x, "cell(s) with multiple heavy chains found. One heavy chain per cell is expected."))
+        }
+        # check multiple beta chains
+        x <- sum(table(db[[cell_id]][db[[locus]] == "TRB"]) > 1)
+        if (x > 0) {
+            stop(paste(x, "cell(s) with multiple beta chains found. One beta chain per cell is expected."))
+        }
+        # check multiple delta chains
+        x <- sum(table(db[[cell_id]][db[[locus]] == "TRD"]) > 1)
+        if (x > 0) {
+            stop(paste(x, "cell(s) with multiple delta chains found. One delta chain per cell is expected."))
+        }
+        # if passed
+        single_cell <- TRUE
     } 
     
     ### check verbose and log
@@ -1093,6 +1246,7 @@ defineClonesScoper <- function(db,
     results_prep <- prepare_db(db = db, 
                                junction = junction, v_call = v_call, j_call = j_call,
                                first = first, cdr3 = cdr3, 
+                               cell_id = cell_id, locus = locus, only_heavy = only_heavy,
                                mod3 = mod3, max_n = max_n)
     db <- results_prep$db
     n_rmv_mod3 <- results_prep$n_rmv_mod3
@@ -1100,6 +1254,14 @@ defineClonesScoper <- function(db,
     n_rmv_N <- results_prep$n_rmv_N
     junction_l <- results_prep$junction_l
     cdr3_col <-  results_prep$cdr3_col
+    
+    ### for single-cell mode: separates heavy and light chain data frames
+    ### performs cloning only on heavy chains
+    if (single_cell) {
+        db_l <- db[db[[locus]] %in% c("IGK", "IGL", "TRA", "TRG"), ]
+        db_h <- db[db[[locus]] %in% c("IGH", "TRB", "TRD"), ]
+        db <- db_h
+    }
     
     ### summary of the groups
     vjl_gps <- db %>% 
@@ -1140,7 +1302,6 @@ defineClonesScoper <- function(db,
     db_cloned <- foreach(gp=1:n_groups,
                          .final=dplyr::bind_rows,
                          .inorder=TRUE,
-                         .packages=c("dplyr", "magrittr"),
                          .errorhandling='stop') %dopar% { 
                              # *********************************************************************************
                              # filter each group
@@ -1161,8 +1322,6 @@ defineClonesScoper <- function(db,
                                                               germline = germline,
                                                               sequence = sequence,
                                                               junction = junction,
-                                                              v_call = v_call,
-                                                              j_call = j_call,
                                                               mutabs = targeting_model,
                                                               len_limit = len_limit,
                                                               cdr3 = cdr3,
@@ -1201,12 +1360,14 @@ defineClonesScoper <- function(db,
     ### Stop the cluster
     if (nproc > 1) { parallel::stopCluster(cluster) }
     
+    ### sort clone ids
     db_cloned$clone_temp <- db_cloned %>%
         dplyr::group_by(!!rlang::sym(clone)) %>%
         dplyr::group_indices()
     db_cloned[[clone]] <- db_cloned$clone_temp
     db_cloned <- db_cloned[order(db_cloned[[clone]]), ]
     db_cloned[[clone]] <- as.character(db_cloned[[clone]])
+    db_cloned$clone_temp <- NULL
     
     ### report removed sequences
     if (mod3) {
@@ -1296,6 +1457,62 @@ defineClonesScoper <- function(db,
     ### remove extra columns
     db_cloned <- db_cloned[, !(names(db_cloned) %in% temp_cols)]
     
+    ### singl cell pipeline
+    if (single_cell) {
+        db_l <- db_l[, !(names(db_l) %in% temp_cols)]
+        db_l[[clone]] <- NA
+        # copy clone ids from heavy chains into light chains
+        cell_ids_h <- unique(db_cloned[[cell_id]])
+        cell_ids_l <- unique(db_l[[cell_id]])
+        for (cellid in cell_ids_l) {
+            if (cellid %in% cell_ids_h) {
+                db_l[[clone]][db_l[[cell_id]] == cellid] <- db_cloned[[clone]][db_cloned[[cell_id]] == cellid]
+            } 
+        }
+        # bind heavy and light chain data.frames
+        stopifnot(all(names(db_cloned) == names(db_l)))
+        db_cloned <- bind_rows(db_cloned, db_l)
+        # split clones by light chains
+        if (split_light) {
+            clones <- unique(db_cloned[[clone]])
+            clones <- clones[!is.na(clones)]
+            for (cloneid in clones) {
+                db_c <- dplyr::filter(db_cloned, !!rlang::sym(clone) == cloneid)
+                if (length(unique(db_c[[cell_id]])) == 1) next()
+                db_c <- groupGenes(data = db_c,
+                                   v_call = v_call,
+                                   j_call = j_call,
+                                   junc_len = NULL,
+                                   cell_id = cell_id,
+                                   locus = locus,
+                                   only_heavy = FALSE,
+                                   first = FALSE)
+                if (length(unique(db_c$vj_group)) == 1) next()
+                db_c[[clone]] <- paste(db_c[[clone]], db_c$vj_group, sep="_") 
+                for (cellid in unique(db_c[[cell_id]])) {
+                    db_cloned[[clone]][db_cloned[[clone]] == cloneid & db_cloned[[cell_id]] == cellid] <- 
+                        db_c[[clone]][db_c[[cell_id]] == cellid]
+                }
+            }
+        }
+        # sort clone ids
+        na.count <- sum(is.na(db_cloned[[clone]]))
+        if (na.count > 0) {
+            db_na <- db_cloned[is.na(db_cloned[[clone]]), ]
+            db_cloned <- db_cloned[!is.na(db_cloned[[clone]]), ]        
+        }
+        db_cloned$clone_temp <- db_cloned %>%
+            dplyr::group_by(!!rlang::sym(clone)) %>%
+            dplyr::group_indices()
+        db_cloned[[clone]] <- db_cloned$clone_temp
+        db_cloned <- db_cloned[order(db_cloned[[clone]]), ]
+        db_cloned[[clone]] <- as.character(db_cloned[[clone]])
+        db_cloned$clone_temp <- NULL
+        if (na.count > 0) {
+            db_cloned <- bind_rows(db_cloned, db_na)
+        }
+    }
+    
     # return results
     if (summarize_clones) {
         return_list <- list("db" = db_cloned,
@@ -1323,8 +1540,6 @@ passToClustering_lev1 <- function (db_gp,
                                    len_limit = NULL,
                                    cdr3 = FALSE,
                                    cdr3_col = NA,
-                                   v_call = "v_call",
-                                   j_call = "j_call",
                                    threshold = NULL,
                                    base_sim = 0.95,
                                    iter_max = 1000, 
@@ -1332,136 +1547,225 @@ passToClustering_lev1 <- function (db_gp,
     ### get model
     model <- match.arg(model)
     
+    ### begin clustering
+    if (model == "identical") {
+        clone_results <- identicalClones_helper(db_gp,
+                                                method = method,
+                                                junction = junction,
+                                                cdr3 = cdr3,
+                                                cdr3_col = cdr3_col)
+    } else if (model == "hierarchical") {
+        clone_results <- hierarchicalClones_helper(db_gp,
+                                                   method = method,
+                                                   linkage = linkage,
+                                                   normalize = normalize,
+                                                   junction = junction,
+                                                   cdr3 = cdr3,
+                                                   cdr3_col = cdr3_col,
+                                                   threshold = threshold)
+    } else if (model == "spectral") {
+        clone_results <- spectralClones_helper(db_gp,
+                                               method = method,
+                                               germline = germline,
+                                               sequence = sequence,
+                                               junction = junction,
+                                               mutabs = mutabs,
+                                               len_limit = len_limit,
+                                               cdr3 = cdr3,
+                                               cdr3_col = cdr3_col,
+                                               threshold = threshold,
+                                               base_sim = base_sim,
+                                               iter_max = iter_max, 
+                                               nstart = nstart)
+    }
+    
+    ### retrun results
+    return_list <- list("idCluster" = clone_results$idCluster, 
+                        "n_cluster" = clone_results$n_cluster, 
+                        "eigen_vals" = clone_results$eigen_vals)
+    return(return_list)
+}
+# *****************************************************************************
+
+# *****************************************************************************
+identicalClones_helper <- function(db_gp,
+                                   method = c("nt", "aa"),
+                                   junction = "junction",
+                                   cdr3 = FALSE,
+                                   cdr3_col = NA) {
     ### get method
     method <- match.arg(method)
     
     ### number of sequences
     n <- nrow(db_gp)
     
-    ### begin clustering
-    if (model == "identical") {
-        seq_col <- ifelse(cdr3, cdr3_col, junction)
-        if (method == "aa") {
-            db_gp[[seq_col]] <- translateDNA(db_gp[[seq_col]])
+    ### cloning
+    seq_col <- ifelse(cdr3, cdr3_col, junction)
+    if (method == "aa") {
+        db_gp[[seq_col]] <- translateDNA(db_gp[[seq_col]])
+    }
+    idCluster <- db_gp %>% 
+        dplyr::group_by(!!rlang::sym(seq_col)) %>% 
+        group_indices()
+    n_cluster <- length(unique(idCluster))
+    eigen_vals <- rep(0, n)
+    
+    ### retrun results
+    return_list <- list("idCluster" = idCluster, 
+                        "n_cluster" = n_cluster, 
+                        "eigen_vals" = eigen_vals)
+    return(return_list)
+}
+# *****************************************************************************
+
+# *****************************************************************************
+hierarchicalClones_helper <- function(db_gp,
+                                      method = c("nt", "aa"),
+                                      linkage = c("single", "average", "complete"),
+                                      normalize = c("len", "none"),
+                                      junction = "junction",
+                                      cdr3 = FALSE,
+                                      cdr3_col = NA,
+                                      threshold = NULL) {
+    ### get method
+    method <- match.arg(method)
+
+    # get linkage
+    linkage <- match.arg(linkage)
+    
+    # get normalize
+    normalize <- match.arg(normalize)
+    
+    ### number of sequences
+    n <- nrow(db_gp)
+    
+    # get sequences
+    if (method == "nt") {
+        seqs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]   
+    } else if (method == "aa") {
+        # translate amino acid for method "aa"
+        seqs <- translateDNA(db_gp[[ifelse(cdr3, cdr3_col, junction)]])
+    }
+    
+    # find unique seqs
+    df <- as.data.table(seqs)[, list(list(.I)), by = seqs]
+    n_unq <- nrow(df)
+    ind_unq <- df$V1
+    seqs_unq <- df$seqs
+    if (n_unq == 1) {
+        return(list("idCluster" = rep(1, n), 
+                    "n_cluster" = 1, 
+                    "eigen_vals" = rep(0, n)))
+    }
+    
+    # calculate distance matrix
+    if (method == "nt") {
+        dist_mtx <- pairwiseDist(seq = seqs_unq, 
+                                 dist_mat = getDNAMatrix(gap = 0))
+    } else if (method == "aa") {
+        dist_mtx <- pairwiseDist(seq = seqs_unq, 
+                                 dist_mat = getAAMatrix(gap = 0))
+    }
+    
+    # perform hierarchical clustering
+    if (normalize == "len") {
+        # calculate normalization factor
+        junc_length <- unique(stri_length(seqs_unq))
+        hc <- hclust(as.dist(dist_mtx/junc_length), method = linkage)    
+    } else if (normalize == "none") {
+        hc <- hclust(as.dist(dist_mtx), method = linkage)    
+    }
+    
+    # cut the tree
+    idCluster_unq <- cutree(hc, h = threshold)
+    
+    # back to reality
+    idCluster <- rep(NA, n)
+    for (i in 1:n_unq) {
+        idCluster[ind_unq[[i]]] <- idCluster_unq[i]
+    }
+    n_cluster <- length(unique(idCluster))
+    eigen_vals <- rep(0, n)
+    
+    ### retrun results
+    return_list <- list("idCluster" = idCluster, 
+                        "n_cluster" = n_cluster, 
+                        "eigen_vals" = eigen_vals)
+    return(return_list)
+}
+# *****************************************************************************
+
+# *****************************************************************************
+spectralClones_helper <- function(db_gp,
+                                  method = c("novj", "vj"),
+                                  germline = "germline_alignment",
+                                  sequence = "sequence_alignment",
+                                  junction = "junction",
+                                  mutabs = NULL,
+                                  len_limit = NULL,
+                                  cdr3 = FALSE,
+                                  cdr3_col = NA,
+                                  threshold = NULL,
+                                  base_sim = 0.95,
+                                  iter_max = 1000, 
+                                  nstart = 1000) {
+    
+    ### get method
+    method <- match.arg(method)
+    
+    ### number of sequences
+    n <- nrow(db_gp)
+    
+    ### cloning
+    if (method == "vj") {
+        ### check targeting model
+        if (!is.null(mutabs)) { 
+            mutabs <- mutabs@mutability 
+        } else {
+            mutabs <- NULL
         }
-        idCluster <- db_gp %>% 
-            dplyr::group_by(!!rlang::sym(seq_col)) %>% 
-            group_indices()
-        n_cluster <- length(unique(idCluster))
-        eigen_vals <- rep(0, n)
-    } else if (model == "hierarchical") {
-        # get linkage
-        linkage <- match.arg(linkage)
-        # get normalize
-        normalize <- match.arg(normalize)
-        # get sequences
-        if (method == "nt") {
-            seqs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]   
-        } else if (method == "aa") {
-            # translate amino acid for method "aa"
-            seqs <- translateDNA(db_gp[[ifelse(cdr3, cdr3_col, junction)]])
-        }
+        # get required info based on the method
+        germs <- db_gp[[germline]]
+        seqs <- db_gp[[sequence]]
+        juncs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]
+        junc_length <- unique(stri_length(juncs))
         # find unique seqs
-        df <- as.data.table(seqs)[, list(list(.I)), by = seqs]
+        seqs <- paste(seqs, juncs, germs, sep = "|")
+        df <- as.data.table(seqs)[, list(list(.I)), by=seqs] %>%
+            tidyr::separate(col = seqs, into = c("seqs_unq", "juncs_unq", "germs_unq"), sep = "\\|")
         n_unq <- nrow(df)
         ind_unq <- df$V1
-        seqs_unq <- df$seqs
         if (n_unq == 1) {
             return(list("idCluster" = rep(1, n), 
                         "n_cluster" = 1, 
                         "eigen_vals" = rep(0, n)))
         }
-        # calculate distance matrix
-        if (method == "nt") {
-            dist_mtx <- pairwiseDist(seq = seqs_unq, 
-                                     dist_mat = getDNAMatrix(gap = 0))
-        } else if (method == "aa") {
-            dist_mtx <- pairwiseDist(seq = seqs_unq, 
-                                     dist_mat = getAAMatrix(gap = 0))
-        }
-        # perform hierarchical clustering
-        if (normalize == "len") {
-            # calculate normalization factor
-            junc_length <- unique(stri_length(seqs_unq))
-            hc <- hclust(as.dist(dist_mtx/junc_length), method = linkage)    
-        } else if (normalize == "none") {
-            hc <- hclust(as.dist(dist_mtx), method = linkage)    
-        }
-        # cut the tree
-        idCluster_unq <- cutree(hc, h = threshold)
-        # back to reality
-        idCluster <- rep(NA, n)
-        for (i in 1:n_unq) {
-            idCluster[ind_unq[[i]]] <- idCluster_unq[i]
-        }
-        n_cluster <- length(unique(idCluster))
-        eigen_vals <- rep(0, n)
-    } else if (model == "spectral") {
-        if (method == "vj") {
-            ### check targeting model
-            if (!is.null(mutabs)) { 
-                mutabs <- mutabs@mutability 
-            } else {
-                mutabs <- NULL
-            }
-            # get required info based on the method
-            germs <- db_gp[[germline]]
-            seqs <- db_gp[[sequence]]
-            juncs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]
-            junc_length <- unique(stri_length(juncs))
-            # find unique seqs
-            df <- as.data.table(seqs)[, list(list(.I)), by = seqs]
-            n_unq <- nrow(df)
-            ind_unq <- df$V1
-            seqs_unq <- df$seqs
-            if (n_unq == 1) {
-                return(list("idCluster" = rep(1, n), 
-                            "n_cluster" = 1, 
-                            "eigen_vals" = rep(0, n)))
-            }
-            # find corresponding unique germs and junctions
-            germs_unq <- sapply(1:n_unq, function(x){ unique(germs[ind_unq[[x]]]) })
-            juncs_unq <- sapply(1:n_unq, function(x){ unique(juncs[ind_unq[[x]]]) })
-            # calculate unique junctions distance matrix
-            dist_mtx <- pairwiseDist(seq = juncs_unq, 
-                                     dist_mat = getDNAMatrix(gap = 0))
-            # count mutations from unique sequence imgt
-            results <- pairwiseMutions(germ_imgt = germs_unq, 
-                                       seq_imgt = seqs_unq,
-                                       junc_length = junc_length, 
-                                       len_limit = len_limit,
-                                       cdr3 = cdr3,
-                                       mutabs = mutabs)
-            tot_mtx <- results$pairWiseTotalMut
-            sh_mtx <- results$pairWiseSharedMut
-            mutab_mtx <- results$pairWiseMutability
-            # calculate likelihhod matrix
-            lkl_mtx <- likelihoods(tot_mtx = tot_mtx, 
-                                   sh_mtx = sh_mtx, 
-                                   mutab_mtx = mutab_mtx)
-            # calculate weighted matrix  
-            disim_mtx <- dist_mtx * (1.0 - lkl_mtx)
-            # check if vj method made any changes, otherwise go back to method "novj"
-            # check if one of the rows is all zeros, meaning vj mathod cannot decide (a highly rare case)
-            if (all(disim_mtx == dist_mtx) | any(rowSums(disim_mtx) == 0)) {
-                # get required info based on the method
-                seqs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]
-                junc_length <- unique(stri_length(seqs))
-                # find unique seqs
-                df <- as.data.table(seqs)[, list(list(.I)), by = seqs]
-                n_unq <- nrow(df)
-                ind_unq <- df$V1
-                seqs_unq <- df$seqs
-                if (n_unq == 1) {
-                    return(list("idCluster" = rep(1, n), 
-                                "n_cluster" = 1, 
-                                "eigen_vals" = rep(0, n)))
-                }
-                # calculate unique seuences distance matrix
-                disim_mtx <- pairwiseDist(seq = seqs_unq, 
-                                          dist_mat = getDNAMatrix(gap = 0))
-            } 
-        } else if (method == "novj") {
+        # find corresponding unique germs and junctions
+        seqs_unq <- df$seqs_unq
+        germs_unq <- df$germs_unq
+        juncs_unq <- df$juncs_unq
+        # calculate unique junctions distance matrix
+        dist_mtx <- pairwiseDist(seq = juncs_unq, 
+                                 dist_mat = getDNAMatrix(gap = 0))
+        # count mutations from unique sequence imgt
+        results <- pairwiseMutions(germ_imgt = germs_unq, 
+                                   seq_imgt = seqs_unq,
+                                   junc_length = junc_length, 
+                                   len_limit = len_limit,
+                                   cdr3 = cdr3,
+                                   mutabs = mutabs)
+        tot_mtx <- results$pairWiseTotalMut
+        sh_mtx <- results$pairWiseSharedMut
+        mutab_mtx <- results$pairWiseMutability
+        # calculate likelihhod matrix
+        lkl_mtx <- likelihoods(tot_mtx = tot_mtx, 
+                               sh_mtx = sh_mtx, 
+                               mutab_mtx = mutab_mtx)
+        # calculate weighted matrix  
+        disim_mtx <- dist_mtx * (1.0 - lkl_mtx)
+        # check if vj method made any changes, otherwise go back to method "novj"
+        # check if one of the rows is all zeros, meaning vj mathod cannot decide (a highly rare case)
+        if (all(disim_mtx == dist_mtx) | any(rowSums(disim_mtx) == 0)) {
             # get required info based on the method
             seqs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]
             junc_length <- unique(stri_length(seqs))
@@ -1478,23 +1782,40 @@ passToClustering_lev1 <- function (db_gp,
             # calculate unique seuences distance matrix
             disim_mtx <- pairwiseDist(seq = seqs_unq, 
                                       dist_mat = getDNAMatrix(gap = 0))
+        } 
+    } else if (method == "novj") {
+        # get required info based on the method
+        seqs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]
+        junc_length <- unique(stri_length(seqs))
+        # find unique seqs
+        df <- as.data.table(seqs)[, list(list(.I)), by = seqs]
+        n_unq <- nrow(df)
+        ind_unq <- df$V1
+        seqs_unq <- df$seqs
+        if (n_unq == 1) {
+            return(list("idCluster" = rep(1, n), 
+                        "n_cluster" = 1, 
+                        "eigen_vals" = rep(0, n)))
         }
-        ### pass to clustering pipeline
-        result <- passToClustering_lev2(mtx = disim_mtx, 
-                                        junc_length = junc_length,
-                                        threshold = threshold, 
-                                        base_sim = base_sim, 
-                                        iter_max = iter_max, 
-                                        nstart = nstart)
-        idCluster_unq <- result$idCluster
-        eigen_vals <- result$eigen_vals
-        ### back to reality
-        idCluster <- rep(NA, n)
-        for (i in 1:n_unq) {
-            idCluster[ind_unq[[i]]] <- idCluster_unq[i]
-        }
-        n_cluster <- length(unique(idCluster))
+        # calculate unique seuences distance matrix
+        disim_mtx <- pairwiseDist(seq = seqs_unq, 
+                                  dist_mat = getDNAMatrix(gap = 0))
     }
+    ### pass to clustering pipeline
+    result <- passToClustering_lev2(mtx = disim_mtx, 
+                                    junc_length = junc_length,
+                                    threshold = threshold, 
+                                    base_sim = base_sim, 
+                                    iter_max = iter_max, 
+                                    nstart = nstart)
+    idCluster_unq <- result$idCluster
+    eigen_vals <- result$eigen_vals
+    ### back to reality
+    idCluster <- rep(NA, n)
+    for (i in 1:n_unq) {
+        idCluster[ind_unq[[i]]] <- idCluster_unq[i]
+    }
+    n_cluster <- length(unique(idCluster))
     
     ### retrun results
     return_list <- list("idCluster" = idCluster, 
@@ -1659,8 +1980,8 @@ passToClustering_lev4 <- function(aff_mtx, idCluster) {
                 l <- length(gr_ls[!is.na(gr_ls)])
                 for (x in 1:l) {
                     if (1 > l) break
-                    if (length(intersect(ids, gr_ls[[x]])) > 0) {
-                        ids <- union(ids, gr_ls[[x]])
+                    if (length(base::intersect(ids, gr_ls[[x]])) > 0) {
+                        ids <- base::union(ids, gr_ls[[x]])
                         gr_ls[[x]] <- NA
                     }
                 }

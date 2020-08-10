@@ -2,7 +2,7 @@
 % Please edit documentation in R/Functions.R
 \name{spectralClones}
 \alias{spectralClones}
-\title{Spectral clustering-based method for partitioning Ig sequences into clones.}
+\title{Spectral clustering method for clonal partitioning}
 \usage{
 spectralClones(
   db,
@@ -13,6 +13,10 @@ spectralClones(
   v_call = "v_call",
   j_call = "j_call",
   clone = "clone_id",
+  cell_id = NULL,
+  locus = "locus",
+  only_heavy = TRUE,
+  split_light = TRUE,
   targeting_model = NULL,
   len_limit = NULL,
   first = FALSE,
@@ -47,8 +51,24 @@ Also used to determine sequence length for grouping.}
 
 \item{clone}{the output column name containing the clone ids.}
 
-\item{targeting_model}{\link{TargetingModel} object. Only applicable if \code{method} = \code{"vj"}. 
-See Details for description.}
+\item{cell_id}{name of the column containing cell identifiers or barcodes. 
+If specified, grouping will be performed in single-cell mode
+with the behavior governed by the \code{locus} and 
+\code{only_heavy} arguments. If set to \code{NULL} then the 
+bulk sequencing data is assumed.}
+
+\item{locus}{name of the column containing locus information. 
+Only applicable to single-cell data.
+Ignored if \code{cell_id=NULL}.}
+
+\item{only_heavy}{use only the IGH (BCR) or TRB/TRD (TCR) sequences 
+for grouping. Only applicable to single-cell data.
+Ignored if \code{cell_id=NULL}.}
+
+\item{split_light}{split clones by light chains. Ignored if \code{cell_id=NULL}.}
+
+\item{targeting_model}{\link[shazam]{TargetingModel} object. Only applicable if 
+\code{method="vj"}. See Details for description.}
 
 \item{len_limit}{\link{IMGT_V} object defining the regions and boundaries of the Ig 
 sequences. If NULL, mutations are counted for entire sequence. Only 
@@ -101,32 +121,55 @@ If \code{summarize_clones=FALSE} modified \code{data.frame} is returned with clo
 specified \code{clone} column.
 }
 \description{
-The \code{spectralClones} function provides an unsupervised computational pipline for 
-assigning Ig sequences into clonal groups sharing same V gene, J gene, and junction 
-length, based on the junction sequence similarity and shared mutations in V and J segments.
+\code{spectralClones} provides an unsupervised spectral clustering 
+approach to infer clonal relationships in high-throughput Adaptive Immune Receptor 
+Repertoire sequencing (AIRR-seq) data. This approach clusters B or T cell receptor 
+sequences based on junction region sequence similarity and shared mutations within 
+partitions that share the same V gene, J gene, and junction length, allowing for 
+ambiguous V or J gene annotations.
 }
 \details{
-\code{spectralClones} provides a computational platform to explore the B cell clonal 
-relationships in high-throughput Adaptive Immune Receptor Repertoire sequencing (AIRR-seq) 
-data sets. Two methods are included to perform clustering among sequences of B cell receptors 
-(BCRs, immunoglobulins, Ig) that share the same V gene, J gene and junction length: 
-\itemize{
-      \item If \code{method} = \code{"novj"}: clonal relationships are inferred using an adaptive 
-      threshold that indicates the level of similarity among junction sequences in a local neighborhood. 
-      \item If \code{method} = \code{"vj"}: clonal relationships are inferred not only based on 
-      the junction region homology, but also takes into account the mutation profiles in the V 
-      and J segments. Mutation counts are determined by comparing the input sequences (in the 
-      column specified by \code{sequence}) to the effective germline sequence (IUPAC representation 
-      of sequences in the column specified by \code{germline}). \item Not mandatory, but the 
-      influence of SHM hot- and cold-spot biases in the clonal inference process will be noted 
-      if a SHM targeting model is provided through argument \code{targeting_model} 
-      (see \link{createTargetingModel} for more technical details). 
-      \item Not mandatory, but the upper-limit cut-off for clonal grouping can be provided to
-      prevent sequences with disimilarity above the threshold group together. Using this argument 
-      any sequence with distances above the \code{threshold} value from other sequences, will 
-      become a singleton.
+If \code{method="novj"}, then clonal relationships are inferred using an adaptive 
+threshold that indicates the level of similarity among junction sequences in a local neighborhood. 
+
+If \code{method="vj"}, then clonal relationships are inferred not only on 
+junction region homology, but also taking into account the mutation profiles in the V 
+and J segments. Mutation counts are determined by comparing the input sequences (in the 
+column specified by \code{sequence}) to the effective germline sequence (IUPAC representation 
+of sequences in the column specified by \code{germline}). 
+
+While not mandatory, the influence of SHM hot-/cold-spot biases in the clonal inference 
+process will be noted if a SHM targeting model is provided through the \code{targeting_model} 
+argument. See \link[shazam]{TargetingModel} for more technical details.
+
+If the \code{threshold} argument is specified, then an upper limit for clonal grouping will 
+be imposed to prevent sequences with dissimilarity above the threshold from grouping together. 
+Any sequence with a distance greater than the \code{threshold} value from the other sequences, 
+will be assigned to a singleton group.
 }
+\section{Single-cell data}{
+
+To invoke single-cell mode the \code{cell_id} argument must be specified and the \code{locus} 
+column must be correct. Otherwise, clustering will be performed with bulk sequencing assumptions, 
+using all input sequences regardless of the values in the \code{locus} column.
+
+Values in the \code{locus} column must be one of \code{c("IGH", "IGI", "IGK", "IGL")} for BCR 
+or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
+return and error message.
+
+Under single-cell mode with paired-chain sequences, there is a choice of whether 
+grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
+(b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
+This is governed by the \code{only_heavy} argument. There is also choice as to whether 
+inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
+heavy/long chain clustering, which is governed by the \code{split_light} argument.
+
+In single-cell mode, clonal clustering will not be performed on data were cells are 
+assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 
+will exit and return an error message. Cells that lack a heavy/long chain sequence (i.e., cells with 
+light/short chains only) will be assigned a \code{clone_id} of \code{NA}.
 }
+
 \examples{
 # Subset example data
 db <- subset(ExampleDb, sample_id == "-1h")
@@ -142,5 +185,6 @@ plot(results, binwidth=0.02)
 
 }
 \seealso{
-See \link{plotCloneSummary} plotting summary results.
+See \link{plotCloneSummary} for plotting summary results. See \link{groupGenes} for 
+more details about grouping requirements.
 }
