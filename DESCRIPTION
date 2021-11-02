@@ -1,7 +1,7 @@
 Package: scoper
 Type: Package
-Version: 1.1.0
-Date: 2020-08-10
+Version: 1.2.0
+Date: 2021-11-02
 Authors@R: c(person("Nima", "Nouri", role=c("aut"), 
                     email="nima.nouri@yale.edu"),
              person("Edel", "Aron", role=c("ctb"), 
@@ -27,20 +27,20 @@ BuildVignettes: true
 VignetteBuilder: knitr
 Encoding: UTF-8
 SystemRequirements: C++11
-Depends: R (>= 3.5.0), ggplot2 (>= 3.2.0)
-Imports: alakazam (>= 1.0.2), shazam (>= 1.0.1), data.table,
-        doParallel, dplyr (>= 0.8.1), foreach, methods, Rcpp (>=
-        0.12.12), rlang, scales, stats, stringi, tidyr (>= 1.0.0)
 LinkingTo: Rcpp
+Depends: R (>= 4.0), ggplot2 (>= 3.3.4)
+Imports: alakazam (>= 1.2.0), shazam (>= 1.1.0), data.table,
+        doParallel, dplyr (>= 1.0), foreach, methods, Rcpp (>=
+        0.12.12), rlang, scales, stats, stringi, tidyr (>= 1.0)
 Suggests: knitr, rmarkdown, testthat
-RoxygenNote: 7.1.1
+RoxygenNote: 7.1.2
 Collate: 'Data.R' 'Scoper.R' 'Functions.R' 'RcppExports.R'
 NeedsCompilation: yes
-Packaged: 2020-08-10 21:24:22 UTC; vandej27
+Packaged: 2021-11-02 18:29:18 UTC; vandej27
 Author: Nima Nouri [aut],
   Edel Aron [ctb],
   Jason Vander Heiden [aut, cre],
   Steven Kleinstein [aut, cph]
 Maintainer: Jason Vander Heiden <jason.vanderheiden@gmail.com>
 Repository: CRAN
-Date/Publication: 2020-08-10 21:50:02 UTC
+Date/Publication: 2021-11-02 21:30:02 UTC

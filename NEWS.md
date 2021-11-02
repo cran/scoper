@@ -1,3 +1,21 @@
+Version 1.2.0: November 2, 2021
+-------------------------------------------------------------------------------
+
+General:
+
++ Updated dependencies to R >= 4.0, ggplot2 >= 3.3.4, dplyr >= 1.0, 
+  alakazam >= 1.2.0, and shazam >= 1.1.0.
++ Changed the internal definition of degenerate characters from `N` to any 
+  characters except `[ATCG]`.
+
+Cloning:
+
++ Added `fields` argument to `identicalClones`, `hierarchicalClones` and 
+  `spectralClones` to allow for data partitioning prior to clonal assignment.
++ Fixed a bug in the cloning functions causing an error in single-cell mode 
+  when the input data contains only heavy chains.
+  
+
 Version 1.1.0: August 10, 2020
 -------------------------------------------------------------------------------
 

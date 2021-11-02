@@ -40,7 +40,7 @@
 #'                          padSeqEnds progressBar groupGenes baseTheme translateDNA
 #' @importFrom  data.table  as.data.table .I
 #' @importFrom  doParallel  registerDoParallel
-#' @importFrom  dplyr       n %>%
+#' @importFrom  dplyr       n %>% do
 #'                          filter select arrange bind_rows
 #'                          group_by ungroup group_indices
 #'                          mutate summarize slice 

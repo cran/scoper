@@ -11,6 +11,7 @@ identicalClones(
   v_call = "v_call",
   j_call = "j_call",
   clone = "clone_id",
+  fields = NULL,
   cell_id = NULL,
   locus = "locus",
   only_heavy = TRUE,
@@ -34,11 +35,15 @@ identicalClones(
 \item{junction}{character name of the column containing junction sequences.
 Also used to determine sequence length for grouping.}
 
-\item{v_call}{character name of the column containing the V-segment allele calls.}
+\item{v_call}{name of the column containing the V-segment allele calls.}
 
-\item{j_call}{character name of the column containing the J-segment allele calls.}
+\item{j_call}{name of the column containing the J-segment allele calls.}
 
-\item{clone}{the output column name containing the clonal clustering identifiers.}
+\item{clone}{output column name containing the clonal cluster identifiers.}
+
+\item{fields}{character vector of additional columns to use for grouping. 
+Sequences with disjoint values in the specified fields will be classified 
+as separate clones.}
 
 \item{cell_id}{name of the column containing cell identifiers or barcodes. 
 If specified, grouping will be performed in single-cell mode
@@ -69,7 +74,7 @@ less than 7 nucleotides.}
 \item{mod3}{if \code{TRUE} removes records with a \code{junction} length that is not divisible by 
 3 in nucleotide space.}
 
-\item{max_n}{The maximum number of N's to permit in the junction sequence before excluding the 
+\item{max_n}{The maximum number of degenerate characters to permit in the junction sequence before excluding the 
 record from clonal assignment. Default is set to be zero. Set it as \code{"NULL"} for no 
 action.}
 
@@ -84,7 +89,8 @@ The default is \code{NULL} for no action.}
 
 \item{summarize_clones}{if \code{TRUE} performs a series of analysis to assess the clonal landscape
 and returns a \link{ScoperClones} object. If \code{FALSE} then
-a modified input \code{db} is returned.}
+a modified input \code{db} is returned. When grouping by \code{fields}, 
+\code{summarize_clones} should be \code{FALSE}.}
 }
 \value{
 If \code{summarize_clones=TRUE} (default) a \link{ScoperClones} object is returned that includes the 
@@ -109,7 +115,7 @@ using all input sequences regardless of the values in the \code{locus} column.
 
 Values in the \code{locus} column must be one of \code{c("IGH", "IGI", "IGK", "IGL")} for BCR 
 or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
-return and error message.
+return an error message.
 
 Under single-cell mode with paired-chain sequences, there is a choice of whether 
 grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
@@ -118,7 +124,7 @@ This is governed by the \code{only_heavy} argument. There is also choice as to w
 inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
 heavy/long chain clustering, which is governed by the \code{split_light} argument.
 
-In single-cell mode, clonal clustering will not be performed on data were cells are 
+In single-cell mode, clonal clustering will not be performed on data where cells are 
 assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 
 will exit and return an error message. Cells that lack a heavy/long chain sequence (i.e., cells with 
 light/short chains only) will be assigned a \code{clone_id} of \code{NA}.
@@ -131,11 +137,11 @@ results <- identicalClones(ExampleDb)
 # Retrieve modified input data with clonal clustering identifiers
 df <- as.data.frame(results)
 
-# Plot clonal summaries 
+# Plot clonal summaries
 plot(results, binwidth=0.02)
 
 }
 \seealso{
-See \link{plotCloneSummary} for plotting summary results. See \link{groupGenes} for 
+See \link{plotCloneSummary} for plotting summary results. See \link[alakazam]{groupGenes} for 
 more details about grouping requirements.
 }

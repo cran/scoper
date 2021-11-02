@@ -5,6 +5,11 @@
 
 using namespace Rcpp;
 
+#ifdef RCPP_USE_GLOBAL_ROSTREAM
+Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
+Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
+#endif
+
 // pairwiseMutMatrixRcpp
 List pairwiseMutMatrixRcpp(NumericVector informative_pos, StringMatrix mutMtx, NumericMatrix motifMtx);
 RcppExport SEXP _scoper_pairwiseMutMatrixRcpp(SEXP informative_posSEXP, SEXP mutMtxSEXP, SEXP motifMtxSEXP) {
