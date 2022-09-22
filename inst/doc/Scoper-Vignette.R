@@ -1,3 +1,8 @@
+## ----eval=FALSE---------------------------------------------------------------
+#  heavy_count <- table(dplyr::filter(ExampleDb, locus=="IGH")$cell_id)
+#  multi_heavy_cells <- names(heavy_count)[heavy_count > 1]
+#  ExampleDb <- dplyr::filter(ExampleDb, !cell_id %in% multi_heavy_cells)
+
 ## ---- eval=TRUE, warning=FALSE, message=FALSE---------------------------------
 # Imports
 library(scoper)

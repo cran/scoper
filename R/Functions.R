@@ -317,13 +317,16 @@ pairwiseMutions <- function(germ_imgt,
 # *****************************************************************************
 ### make a dataframe of unique seqs in each clone
 uniqueSeq <- function(seqs) {
+    # seqs_db <- data.frame(value = seqs, name = names(seqs), stringsAsFactors = FALSE) %>%
+    #     dplyr::group_by(!!!rlang::syms(c("name", "value"))) %>% # alternatively: group_by(name) if name value pair is always unique
+    #     dplyr::slice(1) %>%
+    #     dplyr::ungroup()
+    # seqs <- seqs_db$value
+    # names(seqs) <- seqs_db$name
+    # return(seqs)
     seqs_db <- data.frame(value = seqs, name = names(seqs), stringsAsFactors = FALSE) %>%
-        dplyr::group_by(!!!rlang::syms(c("name", "value"))) %>% # alternatively: group_by(name) if name value pair is always unique
-        dplyr::slice(1) %>%
-        dplyr::ungroup()
-    seqs <- seqs_db$value
-    names(seqs) <- seqs_db$name
-    return(seqs)
+        distinct()
+    setNames(seqs_db$value, seqs_db$name)
 }
 # *****************************************************************************
 
@@ -343,15 +346,16 @@ calculateInterVsIntra <- function(db,
         # (needed for 'foreach' in non-parallel mode)
         registerDoSEQ()
     } else if( nproc > 1 ) {
-        cluster <- parallel::makeCluster(nproc, type="PSOCK", outfile = "")
+        cluster <- parallel::makeCluster(nproc, type="PSOCK")
         registerDoParallel(cluster)
     } else {
         stop('Nproc must be positive.')
     }
     
     ### export function to clusters
+    DNAMatrix_gap0 <- getDNAMatrix(gap = 0)
     if (nproc > 1) { 
-        export_functions <- list("pairwiseDist", "getDNAMatrix", "uniqueSeq")
+        export_functions <- list("pairwiseDist", "DNAMatrix_gap0", "uniqueSeq", "stri_split_fixed")
         parallel::clusterExport(cluster, export_functions, envir=environment())
     }
     
@@ -368,14 +372,15 @@ calculateInterVsIntra <- function(db,
                       .errorhandling='stop') %dopar% {
                           
                           # *********************************************************************************
-                          clones <- strsplit(vjl_gps$clone_id[k], split=",")[[1]]
+                          clones <- stri_split_fixed(vjl_gps$clone_id[k], ",")[[1]]
                           l <- vjl_gps$junction_length[k]
                           n_clones <- length(clones)
-                          seqs <- db[[ifelse(cdr3, cdr3_col, junction)]][db[[clone]] %in% clones]
-                          names(seqs) <- db[[clone]][db[[clone]] %in% clones]
+                          in_clones <- db[[clone]] %in% clones
+                          seqs <- db[[ifelse(cdr3, cdr3_col, junction)]][in_clones]
+                          names(seqs) <- db[[clone]][in_clones]
                           seqs <- uniqueSeq(seqs)
                           ### calculate distance matrix among all seqs
-                          dist_mtx <- pairwiseDist(seqs, dist_mat=getDNAMatrix(gap = 0))
+                          dist_mtx <- pairwiseDist(seqs, dist_mat=DNAMatrix_gap0)
                           ### prealoocate a vector = no. of max-dist in each clone (intra) + no. of min-dist between clones (inter)
                           nrow_f <- n_clones + n_clones*(n_clones-1)/2
                           vec_f <- rep(NA, nrow_f)
@@ -1152,7 +1157,7 @@ defineClonesScoper <- function(db,
     
     ### get method
     method <- match.arg(method)
-
+    
     # Initial checks
     if (!is.data.frame(db)) {
         stop("'db' must be a data frame")
@@ -1240,7 +1245,7 @@ defineClonesScoper <- function(db,
             db$cell_id_temp <- db %>%
                 dplyr::group_by(!!!rlang::syms(fields)) %>% 
                 dplyr::group_indices() 
-            db$cell_id_temp <- paste(db[[cell_id]], db$cell_id_temp, sep="_")     
+            db$cell_id_temp <- stri_join(db[[cell_id]], db$cell_id_temp, sep="_")     
             cell_id <- "cell_id_temp"
         }
         
@@ -1280,8 +1285,17 @@ defineClonesScoper <- function(db,
     } else {
         log_verbose <- 0
     }
-
+    
     ### prepare db
+    ### Creates the initial vjl groups to identify clonally related sequences
+    ### using the heavy chain.
+    ### The vj group is created with groupGenes, using heavy chaing v and j calls only
+    ### (only_heavy=T) or also considering the vj light chain call (only_heavy=F). 
+    ### Then an additional l group is added, based on the junction length, not
+    ### using thegroupGenes. As only the heavy chain data is used for cloning, 
+    ### only the heavy chain sequences' junction length matters. At this point,
+    ### single cell data has one heavy chain sequence per cell, and one cell can
+    ### only belong to a v+j+heavy-chain-junction-length group.
     results_prep <- prepare_db(db = db, 
                                junction = junction, v_call = v_call, j_call = j_call,
                                first = first, cdr3 = cdr3, fields = fields,
@@ -1299,10 +1313,23 @@ defineClonesScoper <- function(db,
     if (single_cell) {
         message("Running defineClonesScoper in single cell mode")
         db_l <- db[db[[locus]] %in% c("IGK", "IGL", "TRA", "TRG"), ]
-        db_h <- db[db[[locus]] %in% c("IGH", "TRB", "TRD"), ]
-        db <- db_h
+        db <- db[db[[locus]] %in% c("IGH", "TRB", "TRD"), ]
     } else {
-        message("Running defineClonesScoper in bulk mode")
+        
+        ####################################################
+        #message("Running defineClonesScoper in bulk mode")
+        # if in bulk mode, only keep heavy chains
+        message("Running defineClonesScoper in bulk mode and only keep heavy chains")
+        if (!locus %in% colnames(db)) {
+            message("... identifying heavy chains with getLocus(v_call).")
+            db[[locus]] <- getLocus(db[[v_call]])
+        }
+        db <- db[db[[locus]] %in% c("IGH", "TRB", "TRD"), ,drop=FALSE]
+        ####################################################
+    }
+    
+    if (nrow(db) == 0 ) {
+        stop("Cloning requires heavy chain sequences.")
     }
     
     ### groups to use
@@ -1311,14 +1338,14 @@ defineClonesScoper <- function(db,
     ### summary of the groups
     vjl_gps <- db %>% 
         dplyr::group_by(!!!rlang::syms(groupBy)) %>%
-        dplyr::summarise(group_v_call = paste(unique(!!rlang::sym(v_call)), collapse=","),
-                         group_j_call = paste(unique(!!rlang::sym(j_call)), collapse=","),
+        dplyr::summarise(group_v_call = stri_join(unique(!!rlang::sym(v_call)), collapse=","),
+                         group_j_call = stri_join(unique(!!rlang::sym(j_call)), collapse=","),
                          group_junction_length = unique(!!rlang::sym(junction_l)),
                          group_size = n())
     vjl_gps$group_v_call <- sapply(1:nrow(vjl_gps), 
-                                      function(i){ paste(unique(strsplit(vjl_gps$group_v_call[i], split=",")[[1]]), collapse=",") })
+                                   function(i){ stri_join(unique(stri_split_fixed(vjl_gps$group_v_call[i], ",")[[1]]), collapse=",") })
     vjl_gps$group_j_call <- sapply(1:nrow(vjl_gps), 
-                                      function(i){ paste(unique(strsplit(vjl_gps$group_j_call[i], split=",")[[1]]), collapse=",") })
+                                   function(i){ stri_join(unique(stri_split_fixed(vjl_gps$group_j_call[i], ",")[[1]]), collapse=",") })
     n_groups <- nrow(vjl_gps)
     
     ### create cluster of nproc size and export namespaces
@@ -1327,8 +1354,7 @@ defineClonesScoper <- function(db,
         # (needed for 'foreach' in non-parallel mode)
         registerDoSEQ()
     } else if( nproc > 1 ) {
-        cluster <- parallel::makeCluster(nproc, type="PSOCK", outfile = "")
-        registerDoParallel(cluster)
+        cluster <- parallel::makeCluster(nproc, type="PSOCK")
     } else {
         stop('Nproc must be positive.')
     }
@@ -1338,8 +1364,9 @@ defineClonesScoper <- function(db,
         export_functions <- list("passToClustering_lev1", "passToClustering_lev2", "passToClustering_lev3", "passToClustering_lev4",
                                  "findGapSmooth", "infer", "krnlMtxGenerator", "makeAffinity", "laplacianMtx", 
                                  "rangeAtoB", "likelihoods", "pairwiseMutions", "pairwiseMutMatrix",
-                                 "printVerbose", "logVerbose")
+                                 "printVerbose", "logVerbose","stri_join")
         parallel::clusterExport(cluster, export_functions, envir=environment())
+        registerDoParallel(cluster)
     }
     
     ### perform clustering for each group
@@ -1395,7 +1422,7 @@ defineClonesScoper <- function(db,
                                                            gp_vcall, gp_jcall, gp_lent, gp_size, n_cluster) }
                              
                              # attache clones
-                             db_gp[[clone]] <- paste(gp, idCluster, sep="_")   
+                             db_gp[[clone]] <- stri_join(gp, idCluster, sep="_")   
                              
                              # return result from each proc
                              return(db_gp)
@@ -1455,9 +1482,9 @@ defineClonesScoper <- function(db,
                              clone_count = length(unique(!!rlang::sym(clone))),
                              clone_id = paste(unique(!!rlang::sym(clone)), collapse = ","))
         vjl_gps$v_call <- sapply(1:nrow(vjl_gps),
-                                    function(i){ paste(unique(strsplit(vjl_gps$v_call[i], split=",")[[1]]), collapse=",") })
+                                 function(i){ stri_join(unique(stri_split_fixed(vjl_gps$v_call[i], ",")[[1]]), collapse=",") })
         vjl_gps$j_call <- sapply(1:nrow(vjl_gps),
-                                    function(i){ paste(unique(strsplit(vjl_gps$j_call[i], split=",")[[1]]), collapse=",") })
+                                 function(i){ stri_join(unique(stri_split_fixed(vjl_gps$j_call[i], ",")[[1]]), collapse=",") })
         
         ### calculate inter and intra distances
         df_inter_intra <- calculateInterVsIntra(db = db_cloned,
@@ -1530,16 +1557,26 @@ defineClonesScoper <- function(db,
                 for (cloneid in clones) {
                     db_c <- dplyr::filter(db_cloned, !!rlang::sym(clone) == cloneid)
                     if (length(unique(db_c[[cell_id]])) == 1) next()
+                    db_c[['junction_l']] <- stri_length(db_c[[junction]])
+                    # Create temporary fake v_call and j_call, to avoid grouping 
+                    # again using heavy chain gene calls. This matters if first=FALSE
+                    # and "linker" ambiguous calls were left out of the same cluster id
+                    # because of the distance threshold. The goal now is to divide the 
+                    # heavy chain clones using light chain info only.
+                    # TODO: this is probably inefficient. Test is groupGenes could handle
+                    # v_call=NULL and j_call=NULL. Or maybe add an option only_light.
+                    db_c[[v_call]][db_c[['locus']] %in% c("IGH", "TRB", "TRD")] <- "IGHV0"
+                    db_c[[j_call]][db_c[['locus']] %in% c("IGH", "TRB", "TRD")] <- "IGHJ0"
                     db_c <- groupGenes(data = db_c,
                                        v_call = v_call,
                                        j_call = j_call,
-                                       junc_len = NULL,
+                                       junc_len = 'junction_l', 
                                        cell_id = cell_id,
                                        locus = locus,
                                        only_heavy = FALSE,
                                        first = FALSE)
                     if (length(unique(db_c$vj_group)) == 1) next()
-                    db_c[[clone]] <- paste(db_c[[clone]], db_c$vj_group, sep="_") 
+                    db_c[[clone]] <- paste(db_c[[clone]], db_c$vj_group, sep="_")
                     for (cellid in unique(db_c[[cell_id]])) {
                         db_cloned[[clone]][db_cloned[[clone]] == cloneid & db_cloned[[cell_id]] == cellid] <- 
                             db_c[[clone]][db_c[[cell_id]] == cellid]

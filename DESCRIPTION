@@ -1,12 +1,14 @@
 Package: scoper
 Type: Package
-Version: 1.2.0
-Date: 2021-11-02
+Version: 1.2.1
+Date: 2022-09-21
 Authors@R: c(person("Nima", "Nouri", role=c("aut"), 
                     email="nima.nouri@yale.edu"),
              person("Edel", "Aron", role=c("ctb"), 
                     email="edel.aron@yale.edu"),
-             person("Jason", "Vander Heiden", role=c("aut", "cre"), 
+             person("Susanna", "Marquez", role=c("ctb", "cre"), 
+                    email="susanna.marquez@yale.edu"),                    
+             person("Jason", "Vander Heiden", role=c("aut"), 
                     email="jason.vanderheiden@gmail.com"),
              person("Steven", "Kleinstein", role=c("aut", "cph"), 
                     email="steven.kleinstein@yale.edu"))
@@ -33,14 +35,15 @@ Imports: alakazam (>= 1.2.0), shazam (>= 1.1.0), data.table,
         doParallel, dplyr (>= 1.0), foreach, methods, Rcpp (>=
         0.12.12), rlang, scales, stats, stringi, tidyr (>= 1.0)
 Suggests: knitr, rmarkdown, testthat
-RoxygenNote: 7.1.2
+RoxygenNote: 7.2.1
 Collate: 'Data.R' 'Scoper.R' 'Functions.R' 'RcppExports.R'
 NeedsCompilation: yes
-Packaged: 2021-11-02 18:29:18 UTC; vandej27
+Packaged: 2022-09-22 06:59:33 UTC; susanna
 Author: Nima Nouri [aut],
   Edel Aron [ctb],
-  Jason Vander Heiden [aut, cre],
+  Susanna Marquez [ctb, cre],
+  Jason Vander Heiden [aut],
   Steven Kleinstein [aut, cph]
-Maintainer: Jason Vander Heiden <jason.vanderheiden@gmail.com>
+Maintainer: Susanna Marquez <susanna.marquez@yale.edu>
 Repository: CRAN
-Date/Publication: 2021-11-02 21:30:02 UTC
+Date/Publication: 2022-09-22 17:00:02 UTC

@@ -38,20 +38,21 @@
 #' @import      utils
 #' @importFrom  alakazam    pairwiseDist checkColumns getDNAMatrix getAAMatrix
 #'                          padSeqEnds progressBar groupGenes baseTheme translateDNA
+#'                          getLocus
 #' @importFrom  data.table  as.data.table .I
 #' @importFrom  doParallel  registerDoParallel
 #' @importFrom  dplyr       n %>% do
 #'                          filter select arrange bind_rows
 #'                          group_by ungroup group_indices
-#'                          mutate summarize slice 
+#'                          mutate summarize slice  distinct
 #' @importFrom  foreach     foreach %dopar% registerDoSEQ
 #' @importFrom  rlang       sym syms
 #' @importFrom  Rcpp        evalCpp
 #' @importFrom  scales      pretty_breaks
 #' @importFrom  shazam      consensusSequence
 #' @importFrom  stats       density kmeans sd cor
-#'                          as.dist hclust cutree
-#' @importFrom  stringi     stri_split_fixed stri_length stri_count
+#'                          as.dist hclust cutree setNames
+#' @importFrom  stringi     stri_split_fixed stri_length stri_count stri_join
 #' @importFrom  tidyr       separate
 #' @useDynLib   scoper, .registration=TRUE
 NULL

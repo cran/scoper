@@ -52,6 +52,18 @@ fields (columns) to be present in the table:
 * `sequence_alignment`
 * `germline_alignment_d_mask`
 
+### Cells with multiple heavy chains in single cell data
+
+When calling clones from single cell data, if any cell in the data contains multiple heavy chains, SCOPer will throw an error message such as *"xxx cell(s) with multiple heavy chains found. One heavy chain per cell is expected"* and then stop running. In the example data we provided in this section, we have cleaned up and removed cells with multiple heavy chains. But if your data contains cells with multiple heavy chains, you need to handle it before calling clones.
+
+A simple solution is just removing cells with multiple heavy chains from the single cell data:
+
+```{r eval=FALSE}
+heavy_count <- table(dplyr::filter(ExampleDb, locus=="IGH")$cell_id)
+multi_heavy_cells <- names(heavy_count)[heavy_count > 1]
+ExampleDb <- dplyr::filter(ExampleDb, !cell_id %in% multi_heavy_cells)
+```
+
 ## Identifying clones by sequence identity
 
 The simplest method for inferring clonal relationships is to define
@@ -172,14 +184,14 @@ and V/J mutation profiles. Technical details can be found in:
         identifying clones from high-throughput B cell repertoire sequencing data.
         Bioinformatics, 34(13):i341-i349.
 
-    Nouri N and Kleinstein SH (2019). Somatic hypermutation analysis for improved
+    Nouri N and Kleinstein SH (2020). Somatic hypermutation analysis for improved
         identification of B cell clonal families from next-generation sequencing data,
-        bioRxiv doi: 10.1101/788620.
+        PLoS Comput Biol 16(6): e1007977. https://doi.org/10.1371/journal.pcbi.1007977
 
 The following examples calls the `spectralClones` function with(out) the same 
-(optional) threshold used previously to define clones using the hierachical approach.
+(optional) threshold used previously to define clones using the hierarchical approach.
 The results data.frame, summary plots, and summary table are accessed in the 
-same manner as shown above using the hierachical approach.
+same manner as shown above using the hierarchical approach.
 
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
 # Clonal assignment using the spectral clustering method novj

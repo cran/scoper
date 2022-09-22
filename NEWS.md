@@ -1,3 +1,26 @@
+Version 1.2.1: September 21, 2022
+-------------------------------------------------------------------------------
+
+Bug fixes:
+
++ Fixed a bug `defineClonesScoper` where the bulk clonal clustering was using 
+  light chain sequences. Now, light chain sequences are removed based on the 
+  `locus` information. If the column `locus` does not exist, it is created with
+  `alakazam::getLocus(v_call)`.
+ 
++ Fixed a bug in `defineClonesScoper` where the `split_light` part of the 
+  algorithm was reanalyzing heavy chain v_calls and using this information to 
+  sometimes split clone_id groups into subgroups. Only light chain v_calls 
+  should be used for this. The bug could be observed in situations where 
+  `first=FALSE` and the 'linker' ambiguous heavy chain v_calls were left out of 
+  the same clone_id group because of the junction distance threshold.
+  
++ Fixed parallelization setup for `defineClonesScoper`.
+
+General:
+
++ Improved hierachical clustering performance. 
+  
 Version 1.2.0: November 2, 2021
 -------------------------------------------------------------------------------
 
