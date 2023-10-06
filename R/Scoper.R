@@ -1,3 +1,7 @@
+#' @keywords internal
+#' @aliases scoper-package
+"_PACKAGE"
+
 # Project documentation and imports
 
 #' The SCOPer package
@@ -44,7 +48,7 @@
 #' @importFrom  dplyr       n %>% do
 #'                          filter select arrange bind_rows
 #'                          group_by ungroup group_indices
-#'                          mutate summarize slice  distinct
+#'                          mutate summarize slice  distinct left_join
 #' @importFrom  foreach     foreach %dopar% registerDoSEQ
 #' @importFrom  rlang       sym syms
 #' @importFrom  Rcpp        evalCpp
@@ -59,10 +63,7 @@ NULL
 
 # Package loading actions
 .onAttach <- function(libname, pkgname) {
-    msg <- paste("As of v1.0.0 the AIRR Rearrangement schema is now the default file format.",
-                 "A description of the standard is available at https://docs.airr-community.org.",
-                 "The legacy Change-O format is supported through arguments to each function",
-                 "that allow the input column names to be explicitly defined.",
-                 sep="\n")
+    msg <- citation(pkgname)
+    msg <-paste(c(format(msg,"citation")),collapse="\n\n")
     packageStartupMessage(msg)
 }

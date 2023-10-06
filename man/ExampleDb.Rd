@@ -18,6 +18,12 @@ A data.frame with the following columns:
     \item  \code{j_call}:                     J region allele assignments.
     \item  \code{junction}:                   Junction region sequence.
     \item  \code{junction_length}:            Length of the junction region in nucleotides.
+    \item  \code{np1_length}:                 Number of nucleotides between V and D segments
+    \item  \code{np2_length}:                 Number of nucleotides between D and J segments
+    \item  \code{sample_id}:                  Sample identifier
+    \item  \code{c_call}:                     C region assignment.
+    \item  \code{duplicate_count}:            Copy number of the sequence
+    \item  \code{locus}:                      Locus of the receptor
 }
 }
 \usage{

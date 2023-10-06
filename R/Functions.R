@@ -221,7 +221,7 @@ pairwiseMutions <- function(germ_imgt,
             return(paste(x, collapse=""))
         })
         ##### Pads ragged ends
-        l <- unique(stri_length(seq_imgt))
+        l <- unique(stringi::stri_length(seq_imgt))
         if (length(l) > 1) {
             seq_imgt <- padSeqEnds(seq = seq_imgt, len = NULL, start = FALSE, pad_char = "N")
         }
@@ -232,7 +232,7 @@ pairwiseMutions <- function(germ_imgt,
             return(paste(x, collapse=""))
         })
         ##### Pads ragged ends
-        l <- unique(stri_length(germ_imgt))
+        l <- unique(stringi::stri_length(germ_imgt))
         if (length(l) > 1) {
             germ_imgt <- padSeqEnds(seq = germ_imgt, len = NULL, start = FALSE, pad_char = "N")
         }
@@ -250,9 +250,9 @@ pairwiseMutions <- function(germ_imgt,
                                              breakTiesByColumns = NULL, 
                                              db = NULL)$cons)
         ##### check germ and seqs lengths
-        seq_imgt_lent <- unique(stri_length(seq_imgt))
-        germ_imgt_lent <- unique(stri_length(germ_imgt))
-        eff_germ_lent <- stri_length(eff_germ)
+        seq_imgt_lent <- unique(stringi::stri_length(seq_imgt))
+        germ_imgt_lent <- unique(stringi::stri_length(germ_imgt))
+        eff_germ_lent <- stringi::stri_length(eff_germ)
         lenConsensus <- min(seq_imgt_lent, germ_imgt_lent, eff_germ_lent) 
         ##### trim extra characters
         if ( seq_imgt_lent > lenConsensus)  { seq_imgt <- substr( seq_imgt, start = 1, stop = lenConsensus) }
@@ -347,7 +347,7 @@ calculateInterVsIntra <- function(db,
         registerDoSEQ()
     } else if( nproc > 1 ) {
         cluster <- parallel::makeCluster(nproc, type="PSOCK")
-        registerDoParallel(cluster)
+        registerDoParallel(cluster,cores=nproc)
     } else {
         stop('Nproc must be positive.')
     }
@@ -483,7 +483,7 @@ prepare_db <- function(db,
                        cell_id = NULL, locus = NULL, only_heavy = TRUE,
                        mod3 = FALSE, max_n = 0) {
     # add junction length column
-    db$junction_l <- stri_length(db[[junction]])
+    db$junction_l <- stringi::stri_length(db[[junction]])
     junction_l <- "junction_l"
     
     ### check for mod3
@@ -650,10 +650,12 @@ plotCloneSummary <- function(data, xmin=NULL, xmax=NULL, breaks=NULL,
     if (nrow(data_intra) > 0) {
         p <- p + 
             geom_histogram(data = data_intra,
-                           aes_string(x = "distance", y = "..density..", fill = "label"),
+                           aes(x = !!rlang::sym("distance"), 
+                               y = after_stat(!!str2lang("density")), 
+                               fill = !!rlang::sym("label")),
                            binwidth = binwidth, color = "white", alpha = 0.85) +
             geom_density(data = data_intra, 
-                         aes_string(x = "distance"),
+                         aes(x = !!rlang::sym("distance")),
                          size = size, color = "grey30")
     }
     
@@ -661,10 +663,12 @@ plotCloneSummary <- function(data, xmin=NULL, xmax=NULL, breaks=NULL,
     if (nrow(data_inter) > 0) {
         p <- p + 
             geom_histogram(data = data_inter,
-                           aes_string(x = "distance", y = "..density..", fill = "label"),
+                           aes(x = !!rlang::sym("distance"), 
+                               y = after_stat(!!str2lang("density")), 
+                               fill = !!rlang::sym("label")),
                            binwidth = binwidth, color = "white", alpha = 0.75) +
             geom_density(data = data_inter, 
-                         aes_string(x = "distance"),
+                         aes(x = !!rlang::sym("distance")),
                          size = size, color = "grey60")
     } else {
         warning("No inter clonal distance is detected. Each group of sequences with same V-gene, J-gene, and junction length may contain only one clone.")
@@ -1163,7 +1167,7 @@ defineClonesScoper <- function(db,
         stop("'db' must be a data frame")
     }
     
-    ### check model andmethod
+    ### check model and method
     if (model == "identical") {
         if (!(method %in% c("nt", "aa"))) {
             stop(paste0("'method' should be one of 'nt' or 'aa' for model '", model, "'.")) 
@@ -1192,7 +1196,7 @@ defineClonesScoper <- function(db,
     }
     
     ### Check for invalid characters
-    valid_chars <- colnames(getDNAMatrix(gap = 0))
+    valid_chars <- colnames(alakazam::getDNAMatrix(gap = 0))
     .validateSeq <- function(x) { all(unique(strsplit(x, "")[[1]]) %in% valid_chars) }
     valid_seq <- sapply(db[[junction]], .validateSeq)
     not_valid_seq <- which(!valid_seq)
@@ -1307,13 +1311,14 @@ defineClonesScoper <- function(db,
     n_rmv_N <- results_prep$n_rmv_N
     junction_l <- results_prep$junction_l
     cdr3_col <-  results_prep$cdr3_col
+    rm(results_prep)
     
     ### for single-cell mode: separates heavy and light chain data frames
     ### performs cloning only on heavy chains
     if (single_cell) {
         message("Running defineClonesScoper in single cell mode")
-        db_l <- db[db[[locus]] %in% c("IGK", "IGL", "TRA", "TRG"), ]
-        db <- db[db[[locus]] %in% c("IGH", "TRB", "TRD"), ]
+        db_l <- db[db[[locus]] %in% c("IGK", "IGL", "TRA", "TRG"), , drop=F]
+        db <- db[db[[locus]] %in% c("IGH", "TRB", "TRD"), , drop=F]
     } else {
         
         ####################################################
@@ -1338,21 +1343,21 @@ defineClonesScoper <- function(db,
     ### summary of the groups
     vjl_gps <- db %>% 
         dplyr::group_by(!!!rlang::syms(groupBy)) %>%
-        dplyr::summarise(group_v_call = stri_join(unique(!!rlang::sym(v_call)), collapse=","),
-                         group_j_call = stri_join(unique(!!rlang::sym(j_call)), collapse=","),
+        dplyr::summarise(group_v_call = stringi::stri_join(unique(!!rlang::sym(v_call)), collapse=","),
+                         group_j_call = stringi::stri_join(unique(!!rlang::sym(j_call)), collapse=","),
                          group_junction_length = unique(!!rlang::sym(junction_l)),
                          group_size = n())
     vjl_gps$group_v_call <- sapply(1:nrow(vjl_gps), 
-                                   function(i){ stri_join(unique(stri_split_fixed(vjl_gps$group_v_call[i], ",")[[1]]), collapse=",") })
+                                   function(i){ stringi::stri_join(unique(stringi::stri_split_fixed(vjl_gps$group_v_call[i], ",")[[1]]), collapse=",") })
     vjl_gps$group_j_call <- sapply(1:nrow(vjl_gps), 
-                                   function(i){ stri_join(unique(stri_split_fixed(vjl_gps$group_j_call[i], ",")[[1]]), collapse=",") })
+                                   function(i){ stringi::stri_join(unique(stringi::stri_split_fixed(vjl_gps$group_j_call[i], ",")[[1]]), collapse=",") })
     n_groups <- nrow(vjl_gps)
     
     ### create cluster of nproc size and export namespaces
     if(nproc == 1) {
         # If needed to run on a single core/cpu then, register DoSEQ
         # (needed for 'foreach' in non-parallel mode)
-        registerDoSEQ()
+        foreach::registerDoSEQ()
     } else if( nproc > 1 ) {
         cluster <- parallel::makeCluster(nproc, type="PSOCK")
     } else {
@@ -1366,12 +1371,12 @@ defineClonesScoper <- function(db,
                                  "rangeAtoB", "likelihoods", "pairwiseMutions", "pairwiseMutMatrix",
                                  "printVerbose", "logVerbose","stri_join")
         parallel::clusterExport(cluster, export_functions, envir=environment())
-        registerDoParallel(cluster)
+        doParallel::registerDoParallel(cluster, cores=nproc)
     }
     
     ### perform clustering for each group
     gp <- NULL
-    db_cloned <- foreach(gp=1:n_groups,
+    db_cloned <- foreach::foreach(gp=1:n_groups,
                          .final=dplyr::bind_rows,
                          .inorder=TRUE,
                          .errorhandling='stop') %dopar% { 
@@ -1422,7 +1427,7 @@ defineClonesScoper <- function(db,
                                                            gp_vcall, gp_jcall, gp_lent, gp_size, n_cluster) }
                              
                              # attache clones
-                             db_gp[[clone]] <- stri_join(gp, idCluster, sep="_")   
+                             db_gp[[clone]] <- stringi::stri_join(gp, idCluster, sep="_")   
                              
                              # return result from each proc
                              return(db_gp)
@@ -1544,20 +1549,21 @@ defineClonesScoper <- function(db,
             cell_ids_l <- unique(db_l[[cell_id]])
             for (cellid in cell_ids_l) {
                 if (cellid %in% cell_ids_h) {
-                    db_l[[clone]][db_l[[cell_id]] == cellid] <- db_cloned[[clone]][db_cloned[[cell_id]] == cellid]
+                    db_l[[clone]][db_l[[cell_id]] == cellid] <- unique(db_cloned[[clone]][db_cloned[[cell_id]] == cellid])
                 } 
             }
-            # bind heavy and light chain data.frames
+          # bind heavy and light chain data.frames
             stopifnot(all(names(db_cloned) == names(db_l)))
             db_cloned <- bind_rows(db_cloned, db_l)
             # split clones by light chains
             if (split_light) {
                 clones <- unique(db_cloned[[clone]])
                 clones <- clones[!is.na(clones)]
+                #TODO: parallelize this for loop
                 for (cloneid in clones) {
                     db_c <- dplyr::filter(db_cloned, !!rlang::sym(clone) == cloneid)
                     if (length(unique(db_c[[cell_id]])) == 1) next()
-                    db_c[['junction_l']] <- stri_length(db_c[[junction]])
+                    db_c[['junction_l']] <- stringi::stri_length(db_c[[junction]])
                     # Create temporary fake v_call and j_call, to avoid grouping 
                     # again using heavy chain gene calls. This matters if first=FALSE
                     # and "linker" ambiguous calls were left out of the same cluster id
@@ -1567,7 +1573,7 @@ defineClonesScoper <- function(db,
                     # v_call=NULL and j_call=NULL. Or maybe add an option only_light.
                     db_c[[v_call]][db_c[['locus']] %in% c("IGH", "TRB", "TRD")] <- "IGHV0"
                     db_c[[j_call]][db_c[['locus']] %in% c("IGH", "TRB", "TRD")] <- "IGHJ0"
-                    db_c <- groupGenes(data = db_c,
+                    db_c <- alakazam::groupGenes(data = db_c,
                                        v_call = v_call,
                                        j_call = j_call,
                                        junc_len = 'junction_l', 
@@ -1576,7 +1582,7 @@ defineClonesScoper <- function(db,
                                        only_heavy = FALSE,
                                        first = FALSE)
                     if (length(unique(db_c$vj_group)) == 1) next()
-                    db_c[[clone]] <- paste(db_c[[clone]], db_c$vj_group, sep="_")
+                    db_c[[clone]] <- paste(db_c[[clone]], db_c$vj_group, sep="_") # TODO: IDs get connected with underscore, figure out when the underscore is removed
                     for (cellid in unique(db_c[[cell_id]])) {
                         db_cloned[[clone]][db_cloned[[clone]] == cloneid & db_cloned[[cell_id]] == cellid] <- 
                             db_c[[clone]][db_c[[cell_id]] == cellid]
@@ -1594,7 +1600,7 @@ defineClonesScoper <- function(db,
                 dplyr::group_by(!!rlang::sym(clone)) %>%
                 dplyr::group_indices()
             db_cloned[[clone]] <- db_cloned$clone_temp
-            db_cloned <- db_cloned[order(db_cloned[[clone]]), ]
+            db_cloned <- db_cloned[order(db_cloned[[clone]]), ] # Sorts them by clone_vj_group
             db_cloned[[clone]] <- as.character(db_cloned[[clone]])
             db_cloned$clone_temp <- NULL
             if (na.count > 0) {
@@ -1736,11 +1742,11 @@ hierarchicalClones_helper <- function(db_gp,
         seqs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]   
     } else if (method == "aa") {
         # translate amino acid for method "aa"
-        seqs <- translateDNA(db_gp[[ifelse(cdr3, cdr3_col, junction)]])
+        seqs <- alakazam::translateDNA(db_gp[[ifelse(cdr3, cdr3_col, junction)]])
     }
     
     # find unique seqs
-    df <- as.data.table(seqs)[, list(list(.I)), by = seqs]
+    df <- data.table::as.data.table(seqs)[, list(list(.I)), by = seqs]
     n_unq <- nrow(df)
     ind_unq <- df$V1
     seqs_unq <- df$seqs
@@ -1752,24 +1758,24 @@ hierarchicalClones_helper <- function(db_gp,
     
     # calculate distance matrix
     if (method == "nt") {
-        dist_mtx <- pairwiseDist(seq = seqs_unq, 
+        dist_mtx <- alakazam::pairwiseDist(seq = seqs_unq, 
                                  dist_mat = getDNAMatrix(gap = 0))
     } else if (method == "aa") {
-        dist_mtx <- pairwiseDist(seq = seqs_unq, 
+        dist_mtx <- alakazam::pairwiseDist(seq = seqs_unq, 
                                  dist_mat = getAAMatrix(gap = 0))
     }
     
     # perform hierarchical clustering
     if (normalize == "len") {
         # calculate normalization factor
-        junc_length <- unique(stri_length(seqs_unq))
+        junc_length <- unique(stringi::stri_length(seqs_unq))
         hc <- hclust(as.dist(dist_mtx/junc_length), method = linkage)    
     } else if (normalize == "none") {
-        hc <- hclust(as.dist(dist_mtx), method = linkage)    
+        hc <- stats::hclust(as.dist(dist_mtx), method = linkage)    
     }
     
     # cut the tree
-    idCluster_unq <- cutree(hc, h = threshold)
+    idCluster_unq <- stats::cutree(hc, h = threshold)
     
     # back to reality
     idCluster <- rep(NA, n)
@@ -1779,7 +1785,7 @@ hierarchicalClones_helper <- function(db_gp,
     n_cluster <- length(unique(idCluster))
     eigen_vals <- rep(0, n)
     
-    ### retrun results
+    ### return results
     return_list <- list("idCluster" = idCluster, 
                         "n_cluster" = n_cluster, 
                         "eigen_vals" = eigen_vals)
@@ -1819,10 +1825,10 @@ spectralClones_helper <- function(db_gp,
         germs <- db_gp[[germline]]
         seqs <- db_gp[[sequence]]
         juncs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]
-        junc_length <- unique(stri_length(juncs))
+        junc_length <- unique(stringi::stri_length(juncs))
         # find unique seqs
         seqs <- paste(seqs, juncs, germs, sep = "|")
-        df <- as.data.table(seqs)[, list(list(.I)), by=seqs] %>%
+        df <- data.table::as.data.table(seqs)[, list(list(.I)), by=seqs] %>%
             tidyr::separate(col = seqs, into = c("seqs_unq", "juncs_unq", "germs_unq"), sep = "\\|")
         n_unq <- nrow(df)
         ind_unq <- df$V1
@@ -1859,9 +1865,9 @@ spectralClones_helper <- function(db_gp,
         if (all(disim_mtx == dist_mtx) | any(rowSums(disim_mtx) == 0)) {
             # get required info based on the method
             seqs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]
-            junc_length <- unique(stri_length(seqs))
+            junc_length <- unique(stringi::stri_length(seqs))
             # find unique seqs
-            df <- as.data.table(seqs)[, list(list(.I)), by = seqs]
+            df <- data.table::as.data.table(seqs)[, list(list(.I)), by = seqs]
             n_unq <- nrow(df)
             ind_unq <- df$V1
             seqs_unq <- df$seqs
@@ -1877,9 +1883,9 @@ spectralClones_helper <- function(db_gp,
     } else if (method == "novj") {
         # get required info based on the method
         seqs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]
-        junc_length <- unique(stri_length(seqs))
+        junc_length <- unique(stringi::stri_length(seqs))
         # find unique seqs
-        df <- as.data.table(seqs)[, list(list(.I)), by = seqs]
+        df <- data.table::as.data.table(seqs)[, list(list(.I)), by = seqs]
         n_unq <- nrow(df)
         ind_unq <- df$V1
         seqs_unq <- df$seqs
