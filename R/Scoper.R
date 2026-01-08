@@ -25,7 +25,6 @@
 #' }
 #' 
 #' @name        scoper
-#' @docType     package
 #' @references
 #' \enumerate{
 #'   \item  Nouri N and Kleinstein SH (2018). A spectral clustering-based method for identifying clones
@@ -49,13 +48,14 @@
 #'                          filter select arrange bind_rows
 #'                          group_by ungroup group_indices
 #'                          mutate summarize slice  distinct left_join
+#' @importFrom  fastcluster hclust
 #' @importFrom  foreach     foreach %dopar% registerDoSEQ
 #' @importFrom  rlang       sym syms
 #' @importFrom  Rcpp        evalCpp
 #' @importFrom  scales      pretty_breaks
 #' @importFrom  shazam      consensusSequence
 #' @importFrom  stats       density kmeans sd cor
-#'                          as.dist hclust cutree setNames
+#'                          as.dist cutree setNames
 #' @importFrom  stringi     stri_split_fixed stri_length stri_count stri_join
 #' @importFrom  tidyr       separate
 #' @useDynLib   scoper, .registration=TRUE

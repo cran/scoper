@@ -52,7 +52,7 @@ and the calculated efective threshold.
 }
 \examples{
 # Find clones
-results <- hierarchicalClones(ExampleDb, threshold=0.15)
+results <- hierarchicalClones(ExampleDb, threshold=0.15, summarize_clones=TRUE)
 
 # Plot clonal summaries
 plot(results, binwidth=0.02)

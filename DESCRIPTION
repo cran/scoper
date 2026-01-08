@@ -1,51 +1,57 @@
 Package: scoper
 Type: Package
-Version: 1.3.0
-Date: 2023-10-05
+Version: 1.4.0
+Date: 2026-01-07
 Authors@R: c(person("Nima", "Nouri", role=c("aut"), 
                     email="nima.nouri@yale.edu"),
-             person("Edel", "Aron", role=c("ctb"), 
+             person("Edel", "Aron", role=c("ctb"),
                     email="edel.aron@yale.edu"),
-             person("Gisela", "Gabernet", role=c("ctb"), 
-                    email="gisela.gabernet@yale.edu"),                       
-             person("Susanna", "Marquez", role=c("ctb", "cre"), 
-                    email="susanna.marquez@yale.edu"),                    
-             person("Jason", "Vander Heiden", role=c("aut"), 
+             person("Gisela", "Gabernet", role=c("ctb"),
+                    email="gisela.gabernet@yale.edu"),
+             person("Cole", "Jensen", role=c("ctb"),
+                    email="cole.jensen@yale.edu"),
+             person("Huimin", "Lyu", role=c("ctb"),
+                    email="huimin.lyu@yale.edu"),
+             person("Susanna", "Marquez", role=c("ctb", "cre"),
+                    email="susanna.marquez@yale.edu"),
+             person("Jason", "Vander Heiden", role=c("aut"),
                     email="jason.vanderheiden@gmail.com"),
-             person("Steven", "Kleinstein", role=c("aut", "cph"), 
+             person("Steven", "Kleinstein", role=c("aut", "cph"),
                     email="steven.kleinstein@yale.edu"))
 Title: Spectral Clustering-Based Method for Identifying B Cell Clones
-Description: Provides a computational framework for identification of B cell clones from 
-             Adaptive Immune Receptor Repertoire sequencing (AIRR-Seq) data. Three main 
-             functions are included (identicalClones, hierarchicalClones, and spectralClones) 
-             that perform clustering among sequences of BCRs/IGs (B cell receptors/immunoglobulins) 
+Description: Provides a computational framework for identification of B cell clones from
+             Adaptive Immune Receptor Repertoire sequencing (AIRR-Seq) data. Three main
+             functions are included (identicalClones, hierarchicalClones, and spectralClones)
+             that perform clustering among sequences of BCRs/IGs (B cell receptors/immunoglobulins)
              which share the same V gene, J gene and junction length.
              Nouri N and Kleinstein SH (2018) <doi: 10.1093/bioinformatics/bty235>.
              Nouri N and Kleinstein SH (2019) <doi: 10.1101/788620>.
              Gupta NT, et al. (2017) <doi: 10.4049/jimmunol.1601850>.
 License: AGPL-3
 URL: https://scoper.readthedocs.io
-BugReports: https://bitbucket.org/kleinstein/scoper/issues
+BugReports: https://github.com/immcantation/scoper/issues
 LazyData: true
 BuildVignettes: true
 VignetteBuilder: knitr
 Encoding: UTF-8
 LinkingTo: Rcpp
 Depends: R (>= 4.0), ggplot2 (>= 3.4.0)
-Imports: alakazam (>= 1.3.0), shazam (>= 1.2.0), data.table,
-        doParallel, dplyr (>= 1.0), foreach, methods, Rcpp (>=
-        0.12.12), rlang, scales, stats, stringi, tidyr (>= 1.0)
-Suggests: knitr, rmarkdown, testthat
-RoxygenNote: 7.2.3
+Imports: alakazam (>= 1.4.1), shazam (>= 1.3.0), data.table,
+        doParallel, dplyr (>= 1.0), fastcluster, foreach, methods, Rcpp
+        (>= 0.12.12), rlang, scales, stats, stringi, tidyr (>= 1.0)
+Suggests: knitr, rmarkdown, testthat (>= 3.0.0)
+RoxygenNote: 7.3.3
 Collate: 'Data.R' 'Scoper.R' 'Functions.R' 'RcppExports.R'
 NeedsCompilation: yes
-Packaged: 2023-10-06 08:53:08 UTC; susanna
+Packaged: 2026-01-08 10:10:52 UTC; susanna
 Author: Nima Nouri [aut],
   Edel Aron [ctb],
   Gisela Gabernet [ctb],
+  Cole Jensen [ctb],
+  Huimin Lyu [ctb],
   Susanna Marquez [ctb, cre],
   Jason Vander Heiden [aut],
   Steven Kleinstein [aut, cph]
 Maintainer: Susanna Marquez <susanna.marquez@yale.edu>
 Repository: CRAN
-Date/Publication: 2023-10-06 09:30:02 UTC
+Date/Publication: 2026-01-08 15:10:02 UTC

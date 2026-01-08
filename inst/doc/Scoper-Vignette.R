@@ -1,7 +1,7 @@
 ## ----eval=FALSE---------------------------------------------------------------
-#  heavy_count <- table(dplyr::filter(ExampleDb, locus=="IGH")$cell_id)
-#  multi_heavy_cells <- names(heavy_count)[heavy_count > 1]
-#  ExampleDb <- dplyr::filter(ExampleDb, !cell_id %in% multi_heavy_cells)
+# heavy_count <- table(dplyr::filter(ExampleDb, locus=="IGH")$cell_id)
+# multi_heavy_cells <- names(heavy_count)[heavy_count > 1]
+# ExampleDb <- dplyr::filter(ExampleDb, !cell_id %in% multi_heavy_cells)
 
 ## ----eval=TRUE, warning=FALSE, message=FALSE----------------------------------
 # Imports
@@ -9,7 +9,7 @@ library(scoper)
 library(dplyr)
 
 # Clonal assignment using identical nucleotide sequences
-results <- identicalClones(ExampleDb, method="nt")
+results <- identicalClones(ExampleDb, method="nt", summarize_clones = TRUE)
 
 ## ----eval=TRUE, warning=FALSE, message=FALSE----------------------------------
 # Get results data.frame
@@ -25,7 +25,7 @@ glimpse(summary(results))
 
 ## ----eval=TRUE, warning=FALSE, message=FALSE----------------------------------
 # Clonal assignment using hierarchical clustering
-results <- hierarchicalClones(ExampleDb, threshold=0.15)
+results <- hierarchicalClones(ExampleDb, threshold=0.15, summarize_clones = TRUE)
 
 ## ----eval=TRUE, warning=FALSE, message=FALSE----------------------------------
 # Get results data.frame
@@ -40,14 +40,14 @@ glimpse(summary(results))
 
 ## ----eval=TRUE, warning=FALSE, message=FALSE----------------------------------
 # Clonal assignment using the spectral clustering method novj
-results <- spectralClones(ExampleDb, method="novj")
+results <- spectralClones(ExampleDb, method="novj", summarize_clones = TRUE)
 # Plot a histogram of inter and intra clonal distances
 plot(results, binwidth=0.02)
 
 ## ----eval=TRUE, warning=FALSE, message=FALSE----------------------------------
 # Clonal assignment using the spectral clustering method novj with threshold
 results <- spectralClones(ExampleDb, method="novj",
-                          threshold=0.15)
+                          threshold=0.15, summarize_clones = TRUE)
 # Plot a histogram of inter and intra clonal distances
 plot(results, binwidth=0.02)
 
@@ -55,7 +55,8 @@ plot(results, binwidth=0.02)
 # Clonal assignment using the spectral clustering method vj with threshold
 results <- spectralClones(ExampleDb, method="vj",
                           threshold=0.15,
-                          germline="germline_alignment_d_mask")
+                          germline="germline_alignment_d_mask",
+                          summarize_clones = TRUE)
 
 ## ----eval=TRUE, warning=FALSE, message=FALSE----------------------------------
 # Get results data.frame

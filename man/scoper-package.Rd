@@ -3,7 +3,6 @@
 \docType{package}
 \name{scoper-package}
 \alias{scoper-package}
-\alias{_PACKAGE}
 \title{scoper: Spectral Clustering-Based Method for Identifying B Cell Clones}
 \description{
 Provides a computational framework for identification of B cell clones from Adaptive Immune Receptor Repertoire sequencing (AIRR-Seq) data. Three main functions are included (identicalClones, hierarchicalClones, and spectralClones) that perform clustering among sequences of BCRs/IGs (B cell receptors/immunoglobulins) which share the same V gene, J gene and junction length. Nouri N and Kleinstein SH (2018) \doi{ 10.1093/bioinformatics/bty235}. Nouri N and Kleinstein SH (2019) \doi{ 10.1101/788620}. Gupta NT, et al. (2017) \doi{ 10.4049/jimmunol.1601850}.
@@ -12,7 +11,7 @@ Provides a computational framework for identification of B cell clones from Adap
 Useful links:
 \itemize{
   \item \url{https://scoper.readthedocs.io}
-  \item Report bugs at \url{https://bitbucket.org/kleinstein/scoper/issues}
+  \item Report bugs at \url{https://github.com/immcantation/scoper/issues}
 }
 
 }
@@ -30,6 +29,8 @@ Other contributors:
 \itemize{
   \item Edel Aron \email{edel.aron@yale.edu} [contributor]
   \item Gisela Gabernet \email{gisela.gabernet@yale.edu} [contributor]
+  \item Cole Jensen \email{cole.jensen@yale.edu} [contributor]
+  \item Huimin Lyu \email{huimin.lyu@yale.edu} [contributor]
 }
 
 }

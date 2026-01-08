@@ -18,7 +18,7 @@ hierarchicalClones(
   cell_id = NULL,
   locus = "locus",
   only_heavy = TRUE,
-  split_light = TRUE,
+  split_light = FALSE,
   first = FALSE,
   cdr3 = FALSE,
   mod3 = FALSE,
@@ -26,7 +26,8 @@ hierarchicalClones(
   nproc = 1,
   verbose = FALSE,
   log = NULL,
-  summarize_clones = TRUE
+  summarize_clones = FALSE,
+  seq_id = "sequence_id"
 )
 }
 \arguments{
@@ -65,11 +66,13 @@ bulk sequencing data is assumed.}
 Only applicable to single-cell data.
 Ignored if \code{cell_id=NULL}.}
 
-\item{only_heavy}{use only the IGH (BCR) or TRB/TRD (TCR) sequences 
+\item{only_heavy}{This is deprecated. Only heavy chains will be used in clustering.
+Use only the IGH (BCR) or TRB/TRD (TCR) sequences 
 for grouping. Only applicable to single-cell data.
 Ignored if \code{cell_id=NULL}.}
 
-\item{split_light}{split clones by light chains. Ignored if \code{cell_id=NULL}.}
+\item{split_light}{This is deprecated. If you desire to split clones by light chains 
+use dowser::resolveLightChains.}
 
 \item{first}{specifies how to handle multiple V(D)J assignments for initial grouping. 
 If \code{TRUE} only the first call of the gene assignments is used. 
@@ -100,16 +103,18 @@ The input file directory is used if path is not specified.
 The default is \code{NULL} for no action.}
 
 \item{summarize_clones}{if \code{TRUE} performs a series of analysis to assess the clonal landscape
-and returns a \link{ScoperClones} object. If \code{FALSE} then
+and returns a \link{ScoperClones} object. If \code{FALSE} (default) then
 a modified input \code{db} is returned. When grouping by \code{fields}, 
 \code{summarize_clones} should be \code{FALSE}.}
+
+\item{seq_id}{The column containing sequence ids}
 }
 \value{
-If \code{summarize_clones=TRUE} (default) a \link{ScoperClones} object is returned that includes the 
+If \code{summarize_clones=FALSE} (default) a modified \code{data.frame} is returned with clone identifiers in the 
+specified \code{clone} column.
+If \code{summarize_clones=TRUE} a \link{ScoperClones} object is returned that includes the 
 clonal assignment summary information and a modified input \code{db} in the \code{db} slot that 
 contains clonal identifiers in the specified \code{clone} column.
-If \code{summarize_clones=FALSE} modified \code{data.frame} is returned with clone identifiers in the 
-specified \code{clone} column.
 }
 \description{
 \code{hierarchicalClones} provides a hierarchical agglomerative clustering 
@@ -143,7 +148,7 @@ light/short chains only) will be assigned a \code{clone_id} of \code{NA}.
 
 \examples{
 # Find clonal groups
-results <- hierarchicalClones(ExampleDb, threshold=0.15)
+results <- hierarchicalClones(ExampleDb, threshold=0.15, summarize_clones=TRUE)
 
 # Retrieve modified input data with clonal clustering identifiers
 df <- as.data.frame(results)
