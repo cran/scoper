@@ -94,9 +94,11 @@ less than 7 nucleotides.}
 \item{mod3}{if \code{TRUE} removes records with a \code{junction} length that is not divisible by 
 3 in nucleotide space.}
 
-\item{max_n}{the maximum number of degenerate characters to permit in the junction sequence before excluding the 
-record from clonal assignment. Default is set to be zero. Set it as \code{"NULL"} 
-for no action.}
+\item{max_n}{The maximum number of non-ATCG characters to permit in the junction sequence before 
+excluding the record from clonal assignment. Counts non-ATCG characters using regex 
+\code{"[^ATCG]"}, which includes N, ?, and IUPAC ambiguity codes. 
+With the default value of 0, all sequences containing any non-ATCG character 
+are removed before clustering. Set to \code{NULL} for no filtering.}
 
 \item{threshold}{the supervising cut-off to enforce an upper-limit distance for clonal grouping.
 A numeric value between (0,1).}

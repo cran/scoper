@@ -10,6 +10,7 @@ hierarchicalClones(
   method = c("nt", "aa"),
   linkage = c("single", "average", "complete"),
   normalize = c("len", "none"),
+  IUPAC = FALSE,
   junction = "junction",
   v_call = "v_call",
   j_call = "j_call",
@@ -36,12 +37,23 @@ hierarchicalClones(
 \item{threshold}{numeric scalar where the tree should be cut (the distance threshold for clonal grouping).}
 
 \item{method}{one of the \code{"nt"} for nucleotide based clustering or 
-\code{"aa"} for amino acid based clustering.}
+\code{"aa"} for amino acid based clustering. Method `"aa"` still expects nucleotide sequences, 
+which will be translated to amino acids}
 
 \item{linkage}{available linkage are \code{"single"}, \code{"average"}, and \code{"complete"}.}
 
 \item{normalize}{method of normalization. The default is \code{"len"}, which divides the distance by the length 
 of the sequence group. If \code{"none"} then no normalization if performed.}
+
+\item{IUPAC}{If \code{TRUE}, allows sequences with IUPAC codes to pass validation 
+and be used in clustering with IUPAC-aware distance calculation 
+(via \code{alakazam::pairwiseDist}). If \code{FALSE} (default), uses fast Hamming distance 
+(via \code{fastDist_rcpp}) and only allows standard bases (A, T, C, G), N, and ? 
+in sequences. This parameter controls validation and distance
+calculation method, not sequence filtering. See \code{max_n} for 
+filtering sequences by character content. See the IUPAC and max_n 
+parameters section for more details and examples. Note: This parameter is only available 
+for \code{hierarchicalClones} with \code{method="nt"}.}
 
 \item{junction}{character name of the column containing junction sequences.
 Also used to determine sequence length for grouping.}
@@ -87,11 +99,14 @@ less than 7 nucleotides.}
 \item{mod3}{if \code{TRUE} removes records with a \code{junction} length that is not divisible by 
 3 in nucleotide space.}
 
-\item{max_n}{The maximum number of degenerate characters to permit in the junction sequence 
-before excluding the record from clonal assignment. Note, with 
-\code{linkage="single"} non-informative positions can create artifactual 
-links between unrelated sequences. Use with caution. 
-Default is set to be zero. Set it as \code{"NULL"} for no action.}
+\item{max_n}{The maximum number of non-ATCG characters (degenerate positions) to permit 
+in the junction sequence before excluding the record from clonal assignment. 
+Note: \code{max_n} operates independently 
+from \code{IUPAC} - it controls filtering by character count, while 
+\code{IUPAC} controls validation and distance calculation method. 
+With \code{linkage="single"}, non-informative positions can create 
+artifactual links between unrelated sequences. Use with caution. 
+Default is 0 (ATCG-only). Set to \code{NULL} for no filtering.}
 
 \item{nproc}{number of cores to distribute the function over.}
 
@@ -104,7 +119,8 @@ The default is \code{NULL} for no action.}
 
 \item{summarize_clones}{if \code{TRUE} performs a series of analysis to assess the clonal landscape
 and returns a \link{ScoperClones} object. If \code{FALSE} (default) then
-a modified input \code{db} is returned. When grouping by \code{fields}, 
+a modified input \code{db} is returned with clone identifiers in the specified 
+`clone` column. When grouping by \code{fields}, 
 \code{summarize_clones} should be \code{FALSE}.}
 
 \item{seq_id}{The column containing sequence ids}
@@ -123,6 +139,60 @@ Repertoire sequencing (AIRR-seq) data. This approach clusters B or T cell recept
 sequences based on junction region sequence similarity within partitions that share the 
 same V gene, J gene, and junction length, allowing for ambiguous V or J gene annotations.
 }
+\section{IUPAC and max_n parameters}{
+
+Note: The \code{IUPAC} parameter is only available for \code{hierarchicalClones} with 
+\code{method="nt"} (nucleotide mode). It is ignored when \code{method="aa"} (amino acid mode). 
+The \code{max_n} parameter is available for all cloning functions.
+
+The \code{IUPAC} and \code{max_n} parameters serve complementary but distinct purposes:
+
+\code{IUPAC} controls:
+\itemize{
+  \item Sequence validation (which characters are allowed)
+  \item Distance calculation method (fast Hamming vs IUPAC-aware scoring)
+}
+
+\code{max_n} controls:
+\itemize{
+  \item Sequence filtering by counting non-ATCG characters in the junction
+}
+
+\code{hierarchicalClones} with \code{method="aa"} accepts the full IUPAC DNA alphabet during validation, 
+then \code{max_n} controls filtering of sequences containing excess non-ATCG characters 
+before translating to amino acids and performing IUPAC-aware clustering.
+
+Example use cases for \code{hierarchicalClones} with \code{method="nt"}:
+\itemize{
+  \item \code{IUPAC=FALSE, max_n=0}: Strict ATCG-only mode with fast distance calculation. 
+        Will throw an error and exit if sequences with characters not A, T, C, G, N, or ? are detected.
+        max_n=0 will filter out sequences with N or ? characters. Fastest option for high-quality data.
+  \item \code{IUPAC=FALSE, max_n>0}: Will throw an error and exit if sequences with characters
+        not A, T, C, G, N, or ? are detected. Allows sequences 
+        with limited N/? characters in distance calculation, using fast Hamming distance. 
+        Note: IUPAC codes are rejected during validation (before max_n filtering), so max_n only 
+        controls filtering of sequences with N or ? characters. Useful for data with low-quality 
+        or masked positions but no experimental ambiguity codes.
+  \item \code{IUPAC=TRUE, max_n=0}: Uses IUPAC-aware distance but filters out all non-ATCG 
+        characters anyway. Only standard bases remain after filtering. Slower than IUPAC=FALSE 
+        but handles any ambiguity codes in the input by filtering them out before clustering.
+  \item \code{IUPAC=TRUE, max_n>0}: Allows sequences with limited ambiguity codes and uses 
+        proper IUPAC-aware distance calculation. Slower but handles biological ambiguity correctly. 
+        Set max_n to the maximum number of ambiguous positions per sequence you want to tolerate 
+        (counts all non-ATCG: N, ?, and other IUPAC codes).
+  \item \code{IUPAC=TRUE, max_n=NULL}: Process all sequences with IUPAC codes regardless of the 
+        number of ambiguous positions. Uses IUPAC-aware distance calculation with no filtering. 
+        Most permissive option.
+}
+
+Note: Validation occurs before filtering. When \code{IUPAC=FALSE}, sequences containing IUPAC 
+ambiguity codes (R, Y, W, S, M, K, etc.) will fail validation and be rejected before the 
+\code{max_n} filtering step. Therefore, with \code{IUPAC=FALSE, max_n > 0}, only sequences 
+with N and ? characters (not IUPAC codes) can pass validation and be filtered by \code{max_n}. 
+The \code{max_n} parameter always counts using regex \code{"[^ATCG]"}, but \code{IUPAC} determines 
+which non-ATCG characters are allowed to reach the filtering step.
+}
+
 \section{Single-cell data}{
 
 To invoke single-cell mode the \code{cell_id} argument must be specified and the \code{locus} 

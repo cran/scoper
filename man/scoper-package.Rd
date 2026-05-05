@@ -28,6 +28,7 @@ Authors:
 Other contributors:
 \itemize{
   \item Edel Aron \email{edel.aron@yale.edu} [contributor]
+  \item Robert Bjornson \email{robert.bjornson@yale.edu} [contributor]
   \item Gisela Gabernet \email{gisela.gabernet@yale.edu} [contributor]
   \item Cole Jensen \email{cole.jensen@yale.edu} [contributor]
   \item Huimin Lyu \email{huimin.lyu@yale.edu} [contributor]

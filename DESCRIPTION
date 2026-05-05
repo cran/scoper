@@ -1,13 +1,15 @@
 Package: scoper
 Type: Package
-Version: 1.4.0
-Date: 2026-01-07
+Version: 1.5.0
+Date: 2026-05-05
 Authors@R: c(person("Nima", "Nouri", role=c("aut"), 
                     email="nima.nouri@yale.edu"),
              person("Edel", "Aron", role=c("ctb"),
                     email="edel.aron@yale.edu"),
+             person("Robert", "Bjornson", role=c("ctb"),
+                    email="robert.bjornson@yale.edu"),
              person("Gisela", "Gabernet", role=c("ctb"),
-                    email="gisela.gabernet@yale.edu"),
+                    email="gisela.gabernet@yale.edu"),                 
              person("Cole", "Jensen", role=c("ctb"),
                     email="cole.jensen@yale.edu"),
              person("Huimin", "Lyu", role=c("ctb"),
@@ -43,9 +45,10 @@ Suggests: knitr, rmarkdown, testthat (>= 3.0.0)
 RoxygenNote: 7.3.3
 Collate: 'Data.R' 'Scoper.R' 'Functions.R' 'RcppExports.R'
 NeedsCompilation: yes
-Packaged: 2026-01-08 10:10:52 UTC; susanna
+Packaged: 2026-05-05 11:42:24 UTC; root
 Author: Nima Nouri [aut],
   Edel Aron [ctb],
+  Robert Bjornson [ctb],
   Gisela Gabernet [ctb],
   Cole Jensen [ctb],
   Huimin Lyu [ctb],
@@ -54,4 +57,4 @@ Author: Nima Nouri [aut],
   Steven Kleinstein [aut, cph]
 Maintainer: Susanna Marquez <susanna.marquez@yale.edu>
 Repository: CRAN
-Date/Publication: 2026-01-08 15:10:02 UTC
+Date/Publication: 2026-05-05 15:04:04 UTC

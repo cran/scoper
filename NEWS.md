@@ -1,3 +1,25 @@
+Version 1.5.0: May 5, 2026
+-------------------------------------------------------------------------------
+
+Clonal analysis performance:
+
++ Added `IUPAC` parameter to `hierarchicalClones`. When `IUPAC=TRUE`, sequences
+  containing IUPAC ambiguity codes are retained and distances are computed using an
+  IUPAC-aware substitution matrix (via `alakazam::pairwiseDist`). This was
+  the default behavior of previous versions of `hierarchicalClones`.
++ Improved clonal clustering speed in `hierarchicalClones` with a new C++
+  Hamming distance implementation (`fastDist_rcpp`), used when
+  `IUPAC=FALSE` (default) and `method="nt"`. With `IUPAC=FALSE`, sequences containing
+  IUPAC ambiguity codes (e.g., R, Y, W, S, M, K) are rejected; only standard
+  bases (A, T, C, G), N, and ? are allowed.
+
+Bug fixes:
+
++ Fixed a floating point precision error in `hierarchicalClones` with average
+  linkage that caused `hclust` to fail. Distances are now rounded before
+  retrying if the initial call fails.
+
+
 Version 1.4.0: January 7, 2026
 -------------------------------------------------------------------------------
 

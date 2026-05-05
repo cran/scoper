@@ -23,9 +23,33 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// countSeqsWithInvalidBases_rcpp
+int countSeqsWithInvalidBases_rcpp(CharacterVector seqs);
+RcppExport SEXP _scoper_countSeqsWithInvalidBases_rcpp(SEXP seqsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< CharacterVector >::type seqs(seqsSEXP);
+    rcpp_result_gen = Rcpp::wrap(countSeqsWithInvalidBases_rcpp(seqs));
+    return rcpp_result_gen;
+END_RCPP
+}
+// fastDist_rcpp
+IntegerMatrix fastDist_rcpp(CharacterVector seqs);
+RcppExport SEXP _scoper_fastDist_rcpp(SEXP seqsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< CharacterVector >::type seqs(seqsSEXP);
+    rcpp_result_gen = Rcpp::wrap(fastDist_rcpp(seqs));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_scoper_pairwiseMutMatrixRcpp", (DL_FUNC) &_scoper_pairwiseMutMatrixRcpp, 3},
+    {"_scoper_countSeqsWithInvalidBases_rcpp", (DL_FUNC) &_scoper_countSeqsWithInvalidBases_rcpp, 1},
+    {"_scoper_fastDist_rcpp", (DL_FUNC) &_scoper_fastDist_rcpp, 1},
     {NULL, NULL, 0}
 };
 
