@@ -8,7 +8,8 @@
 #' @slot   db              \code{data.frame} of repertoire data including with clonal identifiers in 
 #'                         the column specified during processing.
 #' @slot   vjl_groups      \code{data.frame} of clonal summary, including sequence count, V gene, 
-#'                         J gene, junction length, and clone counts.
+#'                         J gene, junction length, and clone counts. In single-cell mode, this 
+#'                         summary is defined from heavy/long-chain partitions (IGH or TRB/TRD).
 #' @slot   inter_intra     \code{data.frame} containing minimum inter (between) and maximum intra 
 #'                         (within) clonal distances.
 #' @slot   eff_threshold   effective cut-off separating the inter (between) and intra (within) clonal 
@@ -476,20 +477,55 @@ logVerbose <- function(out_dir, log_verbose_name,
 }
 # *****************************************************************************
 
+# helper function .isNucleotideSequence, check whether a sequence is compatible with a
+# nucleotide alphabet.
+# NOTE: because the nucleotide (IUPAC) alphabet overlaps with the amino acid alphabet,
+# this test rules out nucleotide content (a FALSE result means the
+# sequence contains a character that is only valid as an amino acid, e.g. E, F, I, L, P,
+# Q); a TRUE result means the sequence is compatible with a nucleotide alphabet. Short
+# amino acid sequences that happen to avoid amino-acid-only letters (e.g. "CARDST") will
+# also return TRUE.
+.isNucleotideSequence <- function(x) {
+  dna_chars <- colnames(alakazam::getDNAMatrix(gap = 0))
+  letters <- strsplit(toupper(as.character(x)), "", fixed = TRUE)[[1]]
+  all(letters %in% dna_chars)
+}
+
+# helper function .isNucleotideData, check whether a vector of sequences is entirely
+# compatible with a nucleotide alphabet (see .isNucleotideSequence).
+# This reduces the chances of mistakenly treating an amino acid sequence as
+# nucleotide-compatible.
+.isNucleotideData <- function(seqs) {
+  all(vapply(seqs, .isNucleotideSequence, logical(1)))
+}
+
 # *****************************************************************************
-prepare_db <- function(db, 
+
+
+prepare_db <- function(db,
                        junction = "junction", v_call = "v_call", j_call = "j_call",
                        first = FALSE, cdr3 = FALSE, fields = NULL,
                        cell_id = NULL, locus = NULL, only_heavy = TRUE,
-                       mod3 = FALSE, max_n = 0) {
+                       mod3 = FALSE, max_n = 0, method = c("nt", "aa", "novj", "vj")) {
+    method <- match.arg(method)
     #TODO: remove only_heavy parameter when it becomes deprecated.
     if(!only_heavy){
       warning("The only_heavy = FALSE parameter is deprecated. Will run as if only_heavy = TRUE")
       only_heavy <- TRUE
     }
-  
+
+    # aa_confirmed: whether the junction column is treated as amino acid, either because
+    # the user declared it (junction_type = "aa") or, with junction_type = "auto",
+    # because at least one sequence contains a character that is only valid as an amino
+    # acid (e.g. E, F, I, L, P, Q). It is computed once by the caller (defineClonesScoper,
+    # during input checking) and carried on db as a column, so it is not recomputed and
+    # the decision stays consistent across the whole pipeline. It defaults to FALSE if db
+    # carries no such column (e.g. when prepare_db is called directly, bypassing
+    # defineClonesScoper's input checking).
+    aa_confirmed <- isTRUE(db$aa_confirmed[1])
+
     #TODO: double check that the 'junction_l' check are still needed when only_heavy
-    # is fully removed 
+    # is fully removed
 
     # add junction length column
     db$junction_l <- stringi::stri_length(db[[junction]])
@@ -497,51 +533,84 @@ prepare_db <- function(db,
     
     ### check for mod3
     # filter mod 3 junction lengths
+    # only meaningful for nucleotide junctions: the length of an amino acid junction
+    # says nothing about the reading frame
+    n_rmv_mod3 <- 0
     if (mod3) {
-        n_before <- nrow(db)
-        db <- db %>% 
-            dplyr::filter(!!rlang::sym(junction_l)%%3 == 0)
-        n_after <- nrow(db)
-        if ( n_before > n_after) {
-            warning(paste("Removed", n_before - n_after, "sequences with junction length not divisible by 3."))
+        if (aa_confirmed) {
+            warning("mod3 = TRUE is ignored because the junction column contains amino acid sequences.")
+        } else {
+            n_before <- nrow(db)
+            db <- db %>%
+                dplyr::filter(!!rlang::sym(junction_l)%%3 == 0)
+            n_after <- nrow(db)
+            n_rmv_mod3 <- n_before - n_after
+            if ( n_rmv_mod3 > 0) {
+                warning(paste("Removed", n_rmv_mod3, "sequences with junction length not divisible by 3."))
+            }
+            if (n_after == 0){
+                stop("No sequences left after removing sequences with junction length not divisible by 3.")
+            }
         }
-    } else {
-        n_rmv_mod3 <- 0
     }
     
     ### check for cdr3
-    # filter junctions with length > 6
+    # filter junctions too short to trim the conserved anchor residues/codons
     if (cdr3) {
-        n_rmv_cdr3 <- sum(db[[junction_l]] <= 6)
-        db <- db %>% 
-            dplyr::filter(!!rlang::sym(junction_l) > 6)
+        # amino acid junction sequences need only 1 residue trimmed from each end;
+        # nucleotide junctions (or method "aa" content that will later be translated)
+        # need a full codon (3 nt) trimmed from each end
+        if (aa_confirmed) {
+            trim_n <- 1
+        } else {
+            trim_n <- 3
+        }
+        min_len <- 2 * trim_n
+        n_rmv_cdr3 <- sum(db[[junction_l]] <= min_len)
+        db <- db %>%
+            dplyr::filter(!!rlang::sym(junction_l) > min_len)
         if ( n_rmv_cdr3 > 0) {
-            warning(paste("Removed", n_rmv_cdr3, "sequences with junction length <=6."))
-        }            
+            warning(paste("Removed", n_rmv_cdr3, "sequences with junction length too short to trim."))
+        }
+        if (nrow(db)==0){
+            stop("No sequences left after removing sequences with junction length too short to trim.")
+        }
         # add cdr3 column
-        db$cdr3_col <- substr(db[[junction]], 4, db[[junction_l]]-3)
+        db$cdr3_col <- substr(db[[junction]], trim_n + 1, db[[junction_l]] - trim_n)
         cdr3_col <- "cdr3_col"
     } else {
         n_rmv_cdr3 <- 0
         cdr3_col <- NA
     }
-    
-    ### check for degenerate characters (non-ATCG's)
-    # Count the number of non-ATCG's in junction
-    # TODO: remove this from here as groupGenes already checks for ambiguous positions
+
+
+   ### check for invalid/degenerate characters in excess of `max_n`
+   # junction sequences are checked against the amino acid alphabet if method is "aa" and
+   # the dataset is confirmed amino acid, and against ATCG otherwise
     if (!is.null(max_n)) {
-        n_rmv_N <- sum(stringi::stri_count(db[[junction]], regex = "[^ATCG]") > max_n)
         n_before <- nrow(db)
-        db <- db %>% 
-            dplyr::filter(stringi::stri_count(!!rlang::sym(junction), regex = "[^ATCG]") <= max_n)
+        if (method == "aa" && aa_confirmed) {
+            db <- db %>%
+                dplyr::filter(stringi::stri_count(!!rlang::sym(junction), regex = "[^ACDEFGHIKLMNPQRSTVWY]") <= max_n)
+            char_desc <- "non-standard amino acid characters in the junction. 20 Standard amino acid characters are A,C,D,E,F,G,H,I,K,L,M,N,P,Q,R,S,T,V,W,Y."
+        } else {
+            db <- db %>%
+                dplyr::filter(stringi::stri_count(!!rlang::sym(junction), regex = "[^ATCG]") <= max_n)
+            char_desc <- "non-ATCG characters in the junction."
+        }
         n_after <- nrow(db)
-        if ( n_before > n_after) {
-            warning(paste("Removed", n_before - n_after, "sequences with non ATCG characters."))
+        n_rmv_N <- n_before - n_after
+        if ( n_rmv_N > 0) {
+          warning(paste("Removed", n_rmv_N, "sequences with", char_desc))
+        }
+        if (n_after == 0){
+          stop(paste("No sequences left after removing sequences with", char_desc))
         }
     } else {
-        n_rmv_N <- 0
+      n_rmv_N <- 0
     }
-    
+
+
     ### Parse V and J columns to get gene groups (vj_group)
     ### Within "fields" group, group sequences by V and J calls.
     if (!is.null(fields)) {
@@ -551,19 +620,17 @@ prepare_db <- function(db,
             do(alakazam::groupGenes(., 
                           v_call = v_call,
                           j_call = j_call,
-                          junc_len = NULL, #TODO: junc_len could be not NULL, why not passing it?
+                          junc_len = NULL, 
                           cell_id = cell_id,
                           locus = locus,
-                          only_heavy = T, #TODO: we only allow True for now, when deprecated remove.
                           first = first))        
     } else {
         db <- alakazam::groupGenes(db,
                          v_call = v_call,
                          j_call = j_call,
-                         junc_len = NULL, #TODO: junc_len could be not NULL, why not passing it?
+                         junc_len = NULL, 
                          cell_id = cell_id,
                          locus = locus,
-                         only_heavy = T, #TODO: we only allow True for now, when deprecated remove.
                          first = first)        
     }
     
@@ -578,8 +645,8 @@ prepare_db <- function(db,
         dplyr::group_indices()
     
     ### return results
-    return_list <- list("db" = db, 
-                        "n_rmv_mod3" = n_rmv_mod3, 
+    return_list <- list("db" = db,
+                        "n_rmv_mod3" = n_rmv_mod3,
                         "n_rmv_cdr3" = n_rmv_cdr3,
                         "n_rmv_N" = n_rmv_N,
                         "junction_l" = junction_l,
@@ -784,28 +851,38 @@ plotCloneSummary <- function(data, xmin=NULL, xmax=NULL, breaks=NULL,
 #'                              If \code{TRUE} only the first call of the gene assignments is used. 
 #'                              If \code{FALSE} the union of ambiguous gene assignments is used to 
 #'                              group all sequences with any overlapping gene calls.
-#' @param    cdr3               if \code{TRUE} removes 3 nucleotides from both ends of \code{"junction"} 
-#'                              prior to clustering (converts IMGT junction to CDR3 region). 
-#'                              If \code{TRUE} this will also remove records with a junction length 
-#'                              less than 7 nucleotides.
-#' @param    mod3               if \code{TRUE} removes records with a \code{junction} length that is not divisible by 
-#'                              3 in nucleotide space.
-#' @param    max_n              The maximum number of non-ATCG characters to permit in the junction sequence before 
-#'                              excluding the record from clonal assignment. Counts non-ATCG characters using regex 
-#'                              \code{"[^ATCG]"}, which includes N, ?, and IUPAC ambiguity codes. 
-#'                              With the default value of 0, all sequences containing any non-ATCG character 
-#'                              (including IUPAC codes) in the junction are removed before clustering. Set to \code{NULL} 
-#'                              for no filtering.
+#' @param    cdr3               if \code{TRUE} removes 3 nucleotides or 1 amino acid residue from both ends
+#'                              of \code{"junction"} prior to clustering (converts IMGT junction to CDR3
+#'                              region). For nucleotide junctions this removes 3 nucleotides from each end
+#'                              and requires a junction length greater than 6 nucleotides; for amino acid
+#'                              junctions this removes 1 residue from each end and requires a junction
+#'                              length greater than 2 residues. Records that are too short are removed.
+#' @param    mod3               if \code{TRUE} removes records with a \code{junction} length that is not divisible by
+#'                              3 in nucleotide space. Ignored (with a warning) if the \code{junction} column
+#'                              contains amino acid sequences.
+#' @param    max_n              The maximum number of non-ATCG characters permitted in the junction nucleotide sequence,
+#'                              or the maximum number of non-standard amino acid characters permitted in the junction
+#'                              amino acid sequence, before excluding the record from clonal assignment.
+#'                              With the default value of 0, nucleotide sequences containing any non-ATCG characters
+#'                              (including IUPAC codes), or amino acid sequences containing any non-standard amino acid
+#'                              characters, are removed before clustering. Set to \code{NULL} to disable filtering.
 #' @param    nproc              number of cores to distribute the function over.
 #' @param    verbose            if \code{TRUE} prints out a summary of each step cloning process.
 #'                              if \code{FALSE} (default) process cloning silently.
 #' @param    log                output path and filename to save the \code{verbose} log. 
 #'                              The input file directory is used if path is not specified.
 #'                              The default is \code{NULL} for no action.
+#' @param    junction_type      one of \code{"auto"} (default), \code{"nt"}, or \code{"aa"}. Only used when
+#'                              \code{method="aa"} (\code{"aa"} is an error for other methods). Declares whether the \code{junction} column holds nucleotide or
+#'                              amino acid sequences. With \code{"auto"}, amino acid content is inferred from the presence
+#'                              of amino-acid-only letters (E, F, I, L, P, Q, ...); short amino acid sequences made only of
+#'                              letters shared with the nucleotide alphabet (e.g. \code{"CARDST"}) cannot be told apart
+#'                              from nucleotides and will be mishandled. Set \code{"aa"} or \code{"nt"} to skip autodetection.
 #' @param    summarize_clones   if \code{TRUE} performs a series of analysis to assess the clonal landscape
 #'                              and returns a \link{ScoperClones} object. If \code{FALSE} (default) then
-#'                              a modified input \code{db} is returned. When grouping by \code{fields}, 
-#'                              \code{summarize_clones} should be \code{FALSE}.
+#'                              a modified input \code{db} is returned. In single-cell mode, \code{vjl_groups}
+#'                              summarizes heavy/long-chain partitions used for clustering. When grouping by
+#'                              \code{fields}, \code{summarize_clones} should be \code{FALSE}.
 #' 
 #' @return
 #' If \code{summarize_clones=FALSE} (default) a modified \code{data.frame} is returned with clone identifiers in the 
@@ -823,12 +900,11 @@ plotCloneSummary <- function(data, xmin=NULL, xmax=NULL, breaks=NULL,
 #' or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
 #' return an error message.
 #' 
-#' Under single-cell mode with paired-chain sequences, there is a choice of whether 
-#' grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
-#' (b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
-#' This is governed by the \code{only_heavy} argument. There is also choice as to whether 
-#' inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
-#' heavy/long chain clustering, which is governed by the \code{split_light} argument.
+#' In single-cell mode, clonal clustering is performed using heavy/long chains only
+#' (IGH for BCR or TRB/TRD for TCR). The \code{only_heavy=FALSE} and
+#' \code{split_light=TRUE} options are deprecated and ignored with warnings.
+#' Consequently, \code{vjl_groups} summarizes heavy/long-chain V/J/junction-length
+#' partitions and does not define groups from light/short chains.
 #' 
 #' In single-cell mode, clonal clustering will not be performed on data where cells are 
 #' assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 
@@ -853,9 +929,10 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
                             v_call="v_call", j_call="j_call", clone="clone_id", fields=NULL,
                             cell_id=NULL, locus="locus", only_heavy=TRUE, split_light=FALSE,
                             first=FALSE, cdr3=FALSE, mod3=FALSE, max_n=0, nproc=1,
-                            verbose=FALSE, log=NULL, summarize_clones=FALSE) {
+                            verbose=FALSE, log=NULL, summarize_clones=FALSE,
+                            junction_type=c("auto", "nt", "aa")) {
 
-    results <- defineClonesScoper(db = db,
+    results <- defineClonesScoper(db = db, junction_type = match.arg(junction_type),
                                   method = match.arg(method), model = "identical", 
                                   junction = junction, v_call = v_call, j_call = j_call, clone = clone, fields = fields,
                                   cell_id = cell_id, locus = locus, only_heavy = only_heavy, split_light = split_light,
@@ -890,20 +967,21 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 #' @param    db                 data.frame containing sequence data.
 #' @param    threshold          numeric scalar where the tree should be cut (the distance threshold for clonal grouping).
 #' @param    method             one of the \code{"nt"} for nucleotide based clustering or 
-#'                              \code{"aa"} for amino acid based clustering. Method `"aa"` still expects nucleotide sequences, 
-#'                              which will be translated to amino acids
+#'                              \code{"aa"} for amino acid based clustering. Method `"aa"` accepts either amino acid or nucleotide sequences. Nucleotide sequences are automatically translated into amino acid sequences.
 #' @param    linkage            available linkage are \code{"single"}, \code{"average"}, and \code{"complete"}.
 #' @param    normalize	        method of normalization. The default is \code{"len"}, which divides the distance by the length 
 #'                              of the sequence group. If \code{"none"} then no normalization if performed.
 #' @param    IUPAC              If \code{TRUE}, allows sequences with IUPAC codes to pass validation 
 #'                              and be used in clustering with IUPAC-aware distance calculation 
 #'                              (via \code{alakazam::pairwiseDist}). If \code{FALSE} (default), uses fast Hamming distance 
-#'                              (via \code{fastDist_rcpp}) and only allows standard bases (A, T, C, G), N, and ? 
-#'                              in sequences. This parameter controls validation and distance
+#'                              (via \code{alakazam::fastDist}) and only allows standard bases (A, T, C, G), N, and ? 
+#'                              in nt sequences if \code{method="nt"} or uses fast Hamming distance 
+#'                              (via \code{alakazam::fastDistAA}) and only allows 20 standard amino acids, X, *, - and . in 
+#'                              aa sequences if \code{method="aa"}. This parameter controls validation and distance
 #'                              calculation method, not sequence filtering. See \code{max_n} for 
 #'                              filtering sequences by character content. See the IUPAC and max_n 
-#'                              parameters section for more details and examples. Note: This parameter is only available 
-#'                              for \code{hierarchicalClones} with \code{method="nt"}. 
+#'                              parameters section for more details and examples. Note: This parameter applies only to
+#'                              \code{hierarchicalClones}. 
 #' @param    junction           character name of the column containing junction sequences.
 #'                              Also used to determine sequence length for grouping.
 #' @param    v_call             name of the column containing the V-segment allele calls.
@@ -930,30 +1008,42 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 #'                              If \code{TRUE} only the first call of the gene assignments is used. 
 #'                              If \code{FALSE} the union of ambiguous gene assignments is used to 
 #'                              group all sequences with any overlapping gene calls.
-#' @param    cdr3               if \code{TRUE} removes 3 nucleotides from both ends of \code{"junction"} 
-#'                              prior to clustering (converts IMGT junction to CDR3 region). 
-#'                              If \code{TRUE} this will also remove records with a junction length 
-#'                              less than 7 nucleotides.
-#' @param    mod3               if \code{TRUE} removes records with a \code{junction} length that is not divisible by 
-#'                              3 in nucleotide space.
-#' @param    max_n              The maximum number of non-ATCG characters (degenerate positions) to permit 
-#'                              in the junction sequence before excluding the record from clonal assignment. 
+#' @param    cdr3               if \code{TRUE} removes 3 nucleotides on 1 amino acid residue from both ends
+#'                              of \code{"junction"} prior to clustering (converts IMGT junction to CDR3
+#'                              region). For nucleotide junctions this removes 3 nucleotides from each end
+#'                              and requires a junction length greater than 6 nucleotides; for amino acid
+#'                              junctions this removes 1 residue from each end and requires a junction
+#'                              length greater than 2 residues. Records that are too short are removed.
+#' @param    mod3               if \code{TRUE} removes records with a \code{junction} length that is not divisible by
+#'                              3 in nucleotide space. Ignored (with a warning) if the \code{junction} column
+#'                              contains amino acid sequences.
+#' @param    max_n              The maximum number of non-ATCG characters permitted in the junction nucleotide sequence,
+#'                              or the maximum number of non-standard amino acid characters permitted in the junction
+#'                              amino acid sequence, before excluding the record from clonal assignment.
+#'                              With the default value of 0, nucleotide sequences containing any non-ATCG characters
+#'                              (including IUPAC codes), or amino acid sequences containing any non-standard amino acid
+#'                              characters, are removed before clustering. Default is 0 (ATCG-only). 
+#'                              Set to \code{NULL} to disable filtering.
 #'                              Note: \code{max_n} operates independently 
 #'                              from \code{IUPAC} - it controls filtering by character count, while 
 #'                              \code{IUPAC} controls validation and distance calculation method. 
-#'                              With \code{linkage="single"}, non-informative positions can create 
-#'                              artifactual links between unrelated sequences. Use with caution. 
-#'                              Default is 0 (ATCG-only). Set to \code{NULL} for no filtering.
 #' @param    nproc              number of cores to distribute the function over.
 #' @param    verbose            if \code{TRUE} prints out a summary of each step cloning process.
 #'                              if \code{FALSE} (default) process cloning silently.
 #' @param    log                output path and filename to save the \code{verbose} log. 
 #'                              The input file directory is used if path is not specified.
 #'                              The default is \code{NULL} for no action.
+#' @param    junction_type      one of \code{"auto"} (default), \code{"nt"}, or \code{"aa"}. Only used when
+#'                              \code{method="aa"} (\code{"aa"} is an error for other methods). Declares whether the \code{junction} column holds nucleotide or
+#'                              amino acid sequences. With \code{"auto"}, amino acid content is inferred from the presence
+#'                              of amino-acid-only letters (E, F, I, L, P, Q, ...); short amino acid sequences made only of
+#'                              letters shared with the nucleotide alphabet (e.g. \code{"CARDST"}) cannot be told apart
+#'                              from nucleotides and will be mishandled. Set \code{"aa"} or \code{"nt"} to skip autodetection.
 #' @param    summarize_clones   if \code{TRUE} performs a series of analysis to assess the clonal landscape
 #'                              and returns a \link{ScoperClones} object. If \code{FALSE} (default) then
 #'                              a modified input \code{db} is returned with clone identifiers in the specified 
-#'                              `clone` column. When grouping by \code{fields}, 
+#'                              `clone` column. In single-cell mode, \code{vjl_groups} summarizes
+#'                              heavy/long-chain partitions used for clustering. When grouping by \code{fields},
 #'                              \code{summarize_clones} should be \code{FALSE}. 
 #' @param   seq_id              The column containing sequence ids
 #'
@@ -965,11 +1055,8 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 #' contains clonal identifiers in the specified \code{clone} column.
 #' 
 #' @section IUPAC and max_n parameters:
-#' Note: The \code{IUPAC} parameter is only available for \code{hierarchicalClones} with 
-#' \code{method="nt"} (nucleotide mode). It is ignored when \code{method="aa"} (amino acid mode). 
-#' The \code{max_n} parameter is available for all cloning functions.
 #' 
-#' The \code{IUPAC} and \code{max_n} parameters serve complementary but distinct purposes:
+#' Note: The \code{IUPAC} and \code{max_n} parameters serve complementary but distinct purposes:
 #' 
 #' \code{IUPAC} controls:
 #' \itemize{
@@ -979,14 +1066,12 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 #' 
 #' \code{max_n} controls:
 #' \itemize{
-#'   \item Sequence filtering by counting non-ATCG characters in the junction
+#'   \item Sequence filtering by counting non-ATCG characters in the nt junction or by counting non-standard AA characters 
+#'   in the aa junction
 #' }
 #'
-#' \code{hierarchicalClones} with \code{method="aa"} accepts the full IUPAC DNA alphabet during validation, 
-#' then \code{max_n} controls filtering of sequences containing excess non-ATCG characters 
-#' before translating to amino acids and performing IUPAC-aware clustering.
 #' 
-#' Example use cases for \code{hierarchicalClones} with \code{method="nt"}:
+#' Example use cases for \code{prepare_db} with \code{method="nt"} or \code{method="aa"} but nt sequences in the junctions :
 #' \itemize{
 #'   \item \code{IUPAC=FALSE, max_n=0}: Strict ATCG-only mode with fast distance calculation. 
 #'         Will throw an error and exit if sequences with characters not A, T, C, G, N, or ? are detected.
@@ -1008,13 +1093,26 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 #'         number of ambiguous positions. Uses IUPAC-aware distance calculation with no filtering. 
 #'         Most permissive option.
 #' }
+#'
+#' Example use cases for \code{prepare_db} with \code{method="aa"} and amino acid sequences in the junction:
+#' \itemize{
+#'   \item \code{IUPAC=FALSE, max_n=0}, with amino acid sequences in the junction:
+#'         Strict standard amino acid mode with fast distance calculation. 
+#'         Will throw an error and exit if sequences with IUPAC ambiguous amino acid characters and 
+#'         max_n=0 will filter out sequences with non-standard amino acid characters. Fastest option for high-quality data.
+#'   \item \code{IUPAC=FALSE, max_n>0}, with amino acid sequences in the junction: 
+#'         Will throw an error and exit if sequences have IUPAC ambiguous amino acid characters. 
+#'         Allows sequences with limited non-standard amino acid characters in distance calculation.
+#'         Use fast Hamming distance. 
+#'   \item \code{IUPAC=TRUE, max_n=2}, with amino acide sequences in the junction: 
+#'         Uses IUPAC-aware distance but filters out sequences with more than \code{max_n} non-standard
+#'         amino acid characters.
+#'         Slower than IUPAC=FALSE, but handles any ambiguity codes in the input.
+#' }
 #' 
-#' Note: Validation occurs before filtering. When \code{IUPAC=FALSE}, sequences containing IUPAC 
-#' ambiguity codes (R, Y, W, S, M, K, etc.) will fail validation and be rejected before the 
-#' \code{max_n} filtering step. Therefore, with \code{IUPAC=FALSE, max_n > 0}, only sequences 
-#' with N and ? characters (not IUPAC codes) can pass validation and be filtered by \code{max_n}. 
-#' The \code{max_n} parameter always counts using regex \code{"[^ATCG]"}, but \code{IUPAC} determines 
-#' which non-ATCG characters are allowed to reach the filtering step.
+#' Note: Validation occurs before filtering. When \code{IUPAC=FALSE}, junction nucleotide sequences containing IUPAC 
+#' ambiguity codes (R, Y, W, S, M, K, etc.)  or junction amino acide sequences containing IUPAC ambiguity codes (B,Z,J)
+#' will fail validation and be rejected before the \code{max_n} filtering step.
 #' 
 #' @section Single-cell data:
 #' To invoke single-cell mode the \code{cell_id} argument must be specified and the \code{locus} 
@@ -1025,12 +1123,11 @@ identicalClones <- function(db, method=c("nt", "aa"), junction="junction",
 #' or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
 #' return an error message.
 #' 
-#' Under single-cell mode with paired-chain sequences, there is a choice of whether 
-#' grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
-#' (b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
-#' This is governed by the \code{only_heavy} argument. There is also choice as to whether 
-#' inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
-#' heavy/long chain clustering, which is governed by the \code{split_light} argument.
+#' In single-cell mode, clonal clustering is performed using heavy/long chains only
+#' (IGH for BCR or TRB/TRD for TCR). The \code{only_heavy=FALSE} and
+#' \code{split_light=TRUE} options are deprecated and ignored with warnings.
+#' Consequently, \code{vjl_groups} summarizes heavy/long-chain V/J/junction-length
+#' partitions and does not define groups from light/short chains.
 #' 
 #' In single-cell mode, clonal clustering will not be performed on data where cells are 
 #' assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 
@@ -1057,9 +1154,10 @@ hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("s
                                v_call="v_call", j_call="j_call", clone="clone_id", fields=NULL,
                                cell_id=NULL, locus="locus", only_heavy=TRUE, split_light=FALSE,
                                first=FALSE, cdr3=FALSE, mod3=FALSE, max_n=0, nproc=1,
-                               verbose=FALSE, log=NULL, summarize_clones=FALSE, seq_id = "sequence_id") {
+                               verbose=FALSE, log=NULL, summarize_clones=FALSE, seq_id = "sequence_id",
+                               junction_type=c("auto", "nt", "aa")) {
     
-    results <- defineClonesScoper(db = db, threshold = threshold, model = "hierarchical", 
+    results <- defineClonesScoper(db = db, junction_type = match.arg(junction_type), threshold = threshold, model = "hierarchical", 
                                   method = match.arg(method), linkage = match.arg(linkage), normalize = match.arg(normalize), 
                                   IUPAC = IUPAC, junction = junction, v_call = v_call, j_call = j_call, clone = clone, fields = fields,
                                   cell_id = cell_id, locus = locus, only_heavy = only_heavy, split_light = split_light,
@@ -1125,12 +1223,15 @@ hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("s
 #'                              If \code{TRUE} only the first call of the gene assignments is used. 
 #'                              If \code{FALSE} the union of ambiguous gene assignments is used to 
 #'                              group all sequences with any overlapping gene calls.
-#' @param    cdr3               if \code{TRUE} removes 3 nucleotides from both ends of \code{"junction"} 
-#'                              prior to clustering (converts IMGT junction to CDR3 region). 
-#'                              If \code{TRUE} this will also remove records with a junction length 
-#'                              less than 7 nucleotides.
-#' @param    mod3               if \code{TRUE} removes records with a \code{junction} length that is not divisible by 
-#'                              3 in nucleotide space.
+#' @param    cdr3               if \code{TRUE} removes 3 nucleotides or 1 amino acid residue from both ends
+#'                              of \code{"junction"} prior to clustering (converts IMGT junction to CDR3
+#'                              region). For nucleotide junctions this removes 3 nucleotides from each end
+#'                              and requires a junction length greater than 6 nucleotides; for amino acid
+#'                              junctions this removes 1 residue from each end and requires a junction
+#'                              length greater than 2 residues. Records that are too short are removed.
+#' @param    mod3               if \code{TRUE} removes records with a \code{junction} length that is not divisible by
+#'                              3 in nucleotide space. Ignored (with a warning) if the \code{junction} column
+#'                              contains amino acid sequences.
 #' @param    max_n              The maximum number of non-ATCG characters to permit in the junction sequence before 
 #'                              excluding the record from clonal assignment. Counts non-ATCG characters using regex 
 #'                              \code{"[^ATCG]"}, which includes N, ?, and IUPAC ambiguity codes. 
@@ -1149,8 +1250,9 @@ hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("s
 #'                              The default is \code{NULL} for no action.
 #' @param    summarize_clones   if \code{TRUE} performs a series of analysis to assess the clonal landscape
 #'                              and returns a \link{ScoperClones} object. If \code{FALSE} (default) then
-#'                              a modified input \code{db} is returned. When grouping by \code{fields}, 
-#'                              \code{summarize_clones} should be \code{FALSE}.
+#'                              a modified input \code{db} is returned. In single-cell mode, \code{vjl_groups}
+#'                              summarizes heavy/long-chain partitions used for clustering. When grouping by
+#'                              \code{fields}, \code{summarize_clones} should be \code{FALSE}.
 #' @return
 #' If \code{summarize_clones=FALSE} (default) a modified \code{data.frame} is returned with clone identifiers in the 
 #' specified \code{clone} column.
@@ -1186,14 +1288,13 @@ hierarchicalClones <- function(db, threshold, method=c("nt", "aa"), linkage=c("s
 #' or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
 #' return an error message.
 #' 
-#' Under single-cell mode with paired-chain sequences, there is a choice of whether 
-#' grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
-#' (b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
-#' This is governed by the \code{only_heavy} argument. There is also choice as to whether 
-#' inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
-#' heavy/long chain clustering, which is governed by the \code{split_light} argument.
+#' In single-cell mode, clonal clustering is performed using heavy/long chains only
+#' (IGH for BCR or TRB/TRD for TCR). The \code{only_heavy=FALSE} and
+#' \code{split_light=TRUE} options are deprecated and ignored with warnings.
+#' Consequently, \code{vjl_groups} summarizes heavy/long-chain V/J/junction-length
+#' partitions and does not define groups from light/short chains.
 #' 
-#' In single-cell mode, clonal clustering will not be performed on data were cells are 
+#' In single-cell mode, clonal clustering will not be performed on data where cells are 
 #' assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 
 #' will exit and return an error message. Cells that lack a heavy/long chain sequence (i.e., cells with 
 #' light/short chains only) will be assigned a \code{clone_id} of \code{NA}.
@@ -1263,9 +1364,11 @@ defineClonesScoper <- function(db,
                                threshold = NULL, base_sim = 0.95,
                                iter_max = 1000, nstart = 1000, nproc = 1,
                                verbose = FALSE, log = NULL,
-                               summarize_clones = FALSE) {
+                               summarize_clones = FALSE,
+                               junction_type = c("auto", "nt", "aa")) {
     ### get model
     model <- match.arg(model)
+    junction_type <- match.arg(junction_type)
     
     ### get method
     method <- match.arg(method)
@@ -1296,6 +1399,9 @@ defineClonesScoper <- function(db,
             stop(paste0("'method' should be one of 'nt' or 'aa' for model '", model, "'.")) 
         }
     } else if (model == "hierarchical") {
+        if (!(method %in% c("nt", "aa"))) {
+            stop(paste0("'method' should be one of 'nt' or 'aa' for model '", model, "'.")) 
+        }
         ### get normalize
         normalize <- match.arg(normalize)
         if (!normalize %in% c("len", "none")) { 
@@ -1319,38 +1425,99 @@ defineClonesScoper <- function(db,
     }
     
     ### Check for invalid characters
-    # IUPAC mode is only supported for hierarchical clustering
-    if (!IUPAC && model == "hierarchical" && method == "nt") {
-        valid_chars <- c("A", "T", "C", "G", "N", "?")
-    } else {
-        valid_chars <- colnames(alakazam::getDNAMatrix(gap = 0))
-    }
-    .validateSeq <- function(x) { all(unique(strsplit(x, "")[[1]]) %in% valid_chars) }
-    valid_seq <- sapply(db[[junction]], .validateSeq)
-    not_valid_seq <- which(!valid_seq)
-    if (length(not_valid_seq) > 0) {
-        error_msg <- paste0("Invalid sequence characters in the ", junction, " column were found. ",
-            length(not_valid_seq)," sequence(s) found.", "\n Valid characters are: '",  valid_chars, "'",
-            "\n If you have other IUPAC characters in your sequences, set IUPAC=TRUE to allow all IUPAC bases, this will run a slower version of hierarchicalClustering.")
-        if (method == "aa") {
-            method_aa_msg <- paste0("Clustering with method='aa' expects nucleotide sequences, which will be translated by this function.")
-            stop(paste0(error_msg, "\n", method_aa_msg))
+
+    valid_characters_pass <- FALSE
+    
+    # Check valid amino acid characters if method is "aa"
+    if(method == "aa"){
+      # junction/cdr3 sequences are homogeneous at the dataset level (always all
+      # nucleotide or all amino acid); a single sequence containing an amino acid-only
+      # character (E, F, I, J, L, P, Q, X, Z, *) is proof that the entire column is amino acid.
+      # junction_type overrides autodetection: "aa" / "nt" declare the content of the
+      # junction column, which is the only way to correctly handle amino acid sequences
+      # that contain only nucleotide-compatible letters (e.g. "CARDST")
+      junction_is_aa <- switch(junction_type,
+                            auto = !.isNucleotideData(db[[junction]]),
+                            aa = TRUE,
+                            nt = FALSE)
+      if (junction_is_aa){
+        if (isFALSE(IUPAC) && model == "hierarchical") {
+          valid_AAchars <- c("A","C","D","E","F","G","H","I","K","L",
+                             "M","N","P","Q","R","S","T","V","W","Y","X",".","-","*")
         } else {
-            stop(error_msg)
+          valid_AAchars <- colnames(alakazam::getAAMatrix(gap=0))
         }
-        
+        .validateAASeq <- function(x) { all(unique(strsplit(x, "")[[1]]) %in% valid_AAchars) }
+        valid_AAseq <- sapply(db[[junction]], .validateAASeq)
+        if (any(!valid_AAseq)) {
+          valid_AAchars <- paste0(valid_AAchars, collapse=",")
+          method_aa_msg <- paste0("Invalid aa sequence characters were found in the ", junction, ".",
+                                  "\n Valid aa characters are: '", valid_AAchars, "'.",
+                                  "\n If you have other IUPAC AA characters in your sequences, set IUPAC=TRUE to allow all IUPAC bases, this will run a slower version of hierarchicalClustering.")
+          stop(paste0(method_aa_msg))
+        } else { # method aa with aa sequences that all pass the valid characters check
+            valid_characters_pass <- TRUE
+        }
+      }
     }
-    
+
+    # whether the junction column is treated as amino acid, by declaration or detection
+    # (see junction_type above and db$aa_confirmed below)
+    aa_confirmed <- valid_characters_pass
+    # methods other than "aa" always work on nucleotide junctions, so only "nt" is consistent
+    if (junction_type == "aa" && method != "aa") {
+      stop("junction_type = 'aa' requires method = 'aa'; method '", method,
+           "' works on nucleotide junctions.")
+    }
+    if (method == "aa" && !aa_confirmed && junction_type == "auto") {
+      warning(paste0("None of the sequences in '", junction, "' contain a character that is only valid ",
+                    "for amino acids, so they are all compatible with a nucleotide alphabet and will be ",
+                    "handled as nucleotide junctions: nucleotide validation and max_n filtering will be ",
+                    "used, cdr3=TRUE will trim one codon from each end, and sequences will be translated ",
+                    "to amino acids downstream. If '",
+                    junction, "' actually already contains amino acid sequences (e.g. short junctions ",
+                    "that happen to avoid amino-acid-only characters, such as \"CARDST\"), this cannot be ",
+                    "detected automatically and will produce incorrect results -- set junction_type = \"aa\" ",
+                    "(or \"nt\") to skip autodetection."))
+    }
+
+    # check valid nt characters
+    # The IUPAC parameter is applicable only to hierarchical clustering
+    if (!valid_characters_pass){
+      if (isFALSE(IUPAC) && model == "hierarchical") {
+        valid_chars <- c("A", "T", "C", "G", "N", "?")
+      } else {
+        valid_chars <- colnames(alakazam::getDNAMatrix(gap = 0))
+      }
+      .validateSeq <- function(x) { all(unique(strsplit(x, "")[[1]]) %in% valid_chars) }
+      valid_seq <- sapply(db[[junction]], .validateSeq)
+      not_valid_seq <- which(!valid_seq)
+      if (length(not_valid_seq) > 0) {
+        valid_chars <- paste0(valid_chars, collapse=",")
+        error_msg <- paste0("Invalid nucleotide characters were found in ",
+                            length(not_valid_seq)," sequence(s). in the ", junction, " column.", "\n Valid characters are: '",  valid_chars, "'",
+                            "\n If you have other IUPAC characters in your sequences, set IUPAC=TRUE to allow all IUPAC bases, this will run a slower version of hierarchicalClustering.")
+        stop(error_msg)
+        }
+    }
+
     ### temp columns
-    temp_cols <- c("vj_group", "vjl_group", "junction_l",  "cdr3_col", "clone_temp", "cell_id_temp")
-    
+    temp_cols <- c("vj_group", "vjl_group", "junction_l",  "cdr3_col", "clone_temp", "cell_id_temp", "aa_confirmed")
+
     ### check for invalid columns
     invalid_cols <- c(clone, temp_cols)
     if (any(invalid_cols %in% colnames(db))) {
         stop("Column(s) '", paste(invalid_cols[invalid_cols %in% colnames(db)], collapse = "', '"), "' already exist.",
              "\n Invalid column names are: '", paste(invalid_cols, collapse = "', '"), "'.")
     }
-    
+
+    # carry the nucleotide vs. amino acid decision as a column on db (like the other
+    # temp columns above) rather than as a function argument, so it is made exactly
+    # once, consistently, for the whole dataset, and is available wherever db/db_gp is
+    # available downstream (prepare_db, and the per-group clustering helpers) without
+    # having to thread it through every function signature in between
+    db$aa_confirmed <- aa_confirmed
+
     ### summarize_clones is not active for fields grouping
     if (!is.null(fields) & summarize_clones) {
         stop("when grouping by `fields`, 'summarize_clones' should be `FALSE`.")
@@ -1437,11 +1604,11 @@ defineClonesScoper <- function(db,
     ### one cell can only belong to a v+j+heavy-chain-junction-length group.
     
     # TODO: modify function prepare_db to not accept only_heavy parameter any more
-    results_prep <- prepare_db(db = db, 
+    results_prep <- prepare_db(db = db,
                                junction = junction, v_call = v_call, j_call = j_call,
                                first = first, cdr3 = cdr3, fields = fields,
                                cell_id = cell_id, locus = locus, only_heavy = only_heavy,
-                               mod3 = mod3, max_n = max_n)
+                               mod3 = mod3, max_n = max_n, method= method)
     db <- results_prep$db
     n_rmv_mod3 <- results_prep$n_rmv_mod3
     n_rmv_cdr3 <- results_prep$n_rmv_cdr3
@@ -1534,7 +1701,7 @@ defineClonesScoper <- function(db,
                                                               method = method,
                                                               linkage = ifelse(model == "hierarchical", linkage, NA),
                                                               normalize = ifelse(model == "hierarchical", normalize, NA),
-                                                              IUPAC = ifelse(model == "hierarchical" & method == "nt", IUPAC, FALSE),
+                                                              IUPAC = ifelse(model == "hierarchical", IUPAC, FALSE),
                                                               germline = germline,
                                                               sequence = sequence,
                                                               junction = junction,
@@ -1544,7 +1711,7 @@ defineClonesScoper <- function(db,
                                                               cdr3_col = cdr3_col,
                                                               threshold = threshold,
                                                               base_sim = base_sim,
-                                                              iter_max = iter_max, 
+                                                              iter_max = iter_max,
                                                               nstart = nstart)
                              idCluster <- results$idCluster
                              n_cluster <- results$n_cluster
@@ -1596,11 +1763,13 @@ defineClonesScoper <- function(db,
         }
     }
     if (cdr3) {
+        # minimum junction length needed to trim the anchors (see prepare_db)
+        cdr3_min_len <- if (aa_confirmed) 3 else 7
         if (verbose) {
-            cat("      CDR3_FILTER> ", n_rmv_cdr3, "invalid junction length(s) (< 7) in the", junction, "column removed.", "\n", sep=" ")   
+            cat("      CDR3_FILTER> ", n_rmv_cdr3, "invalid junction length(s) (<", cdr3_min_len, ") in the", junction, "column removed.", "\n", sep=" ")   
         }
         if (log_verbose)  { 
-            cat("      CDR3_FILTER> ", n_rmv_cdr3, "invalid junction length(s) (< 7) in the", junction, "column removed.", "\n", sep=" ",
+            cat("      CDR3_FILTER> ", n_rmv_cdr3, "invalid junction length(s) (<", cdr3_min_len, ") in the", junction, "column removed.", "\n", sep=" ",
                 file = file.path(out_dir, log_verbose_name), append=TRUE) 
         }
     }
@@ -1798,13 +1967,12 @@ defineClonesScoper <- function(db,
                 db_na <- db_cloned[is.na(db_cloned[[clone]]), ]
                 db_cloned <- db_cloned[!is.na(db_cloned[[clone]]), ]
             }
-            db_cloned$clone_temp <- db_cloned %>%
-                dplyr::group_by(!!rlang::sym(clone)) %>%
-                dplyr::group_indices()
-            db_cloned[[clone]] <- db_cloned$clone_temp
-            db_cloned <- db_cloned[order(db_cloned[[clone]]), ] # Sorts them by clone_vj_group
-            db_cloned[[clone]] <- as.character(db_cloned[[clone]])
-            db_cloned$clone_temp <- NULL
+            # Clone ids are already final (assigned above, before the light chain
+            # merge); light chain rows only ever copy an existing heavy chain clone
+            # id or stay NA, so nothing needs to be renumbered. Re-sort by the
+            # existing numeric id so a clone's heavy and light chain rows sit
+            # together.
+            db_cloned <- db_cloned[order(as.integer(db_cloned[[clone]])), ]
             if (na.count > 0) {
                 db_cloned <- bind_rows(db_cloned, db_na)
             }
@@ -1829,7 +1997,7 @@ defineClonesScoper <- function(db,
 # *****************************************************************************
 
 # *****************************************************************************
-passToClustering_lev1 <- function (db_gp, 
+passToClustering_lev1 <- function (db_gp,
                                    model = c("identical", "hierarchical", "spectral"),
                                    method = c("nt", "aa", "novj", "vj"),
                                    linkage = c("single", "average", "complete"),
@@ -1844,11 +2012,11 @@ passToClustering_lev1 <- function (db_gp,
                                    cdr3_col = NA,
                                    threshold = NULL,
                                    base_sim = 0.95,
-                                   iter_max = 1000, 
+                                   iter_max = 1000,
                                    nstart = 1000) {
     ### get model
     model <- match.arg(model)
-    
+
     ### begin clustering
     if (model == "identical") {
         clone_results <- identicalClones_helper(db_gp,
@@ -1861,7 +2029,7 @@ passToClustering_lev1 <- function (db_gp,
                                                    method = method,
                                                    linkage = linkage,
                                                    normalize = normalize,
-                                                   IUPAC = IUPAC, 
+                                                   IUPAC = IUPAC,
                                                    junction = junction,
                                                    cdr3 = cdr3,
                                                    cdr3_col = cdr3_col,
@@ -1898,15 +2066,20 @@ identicalClones_helper <- function(db_gp,
                                    cdr3_col = NA) {
     ### get method
     method <- match.arg(method)
-    
+
     ### number of sequences
     n <- nrow(db_gp)
-    
+
     ### cloning
+    ### junction/cdr3 sequences are homogeneous across the whole dataset (never a mix of
+    ### real nucleotide and real amino acid content), so the nucleotide vs. amino acid
+    ### decision (db_gp$aa_confirmed, set once upstream in defineClonesScoper) is simply
+    ### applied here rather than re-derived per group
     seq_col <- ifelse(cdr3, cdr3_col, junction)
-    if (method == "aa") {
-        db_gp[[seq_col]] <- translateDNA(db_gp[[seq_col]])
+    if (method == "aa" && !isTRUE(db_gp$aa_confirmed[1])) {
+      db_gp[[seq_col]] <- alakazam::translateDNA(db_gp[[seq_col]])
     }
+    
     idCluster <- db_gp %>% 
         dplyr::group_by(!!rlang::sym(seq_col)) %>% 
         group_indices()
@@ -1936,19 +2109,22 @@ hierarchicalClones_helper <- function(db_gp,
 
     # get linkage
     linkage <- match.arg(linkage)
-    
+
     # get normalize
     normalize <- match.arg(normalize)
-    
+
     ### number of sequences
     n <- nrow(db_gp)
 
+    ### junction/cdr3 sequences are homogeneous across the whole dataset (never a mix of
+    ### real nucleotide and real amino acid content), so the nucleotide vs. amino acid
+    ### decision (db_gp$aa_confirmed, set once upstream in defineClonesScoper) is simply
+    ### applied here rather than re-derived per group
     # get sequences
-    if (method == "nt") {
-        seqs <- db_gp[[ifelse(cdr3, cdr3_col, junction)]]   
-    } else if (method == "aa") {
-        # translate amino acid for method "aa"
-        seqs <- alakazam::translateDNA(db_gp[[ifelse(cdr3, cdr3_col, junction)]])
+    seq_col <- ifelse(cdr3, cdr3_col, junction)
+    seqs <- db_gp[[seq_col]]
+    if (method == "aa" && !isTRUE(db_gp$aa_confirmed[1])) {
+        seqs <- alakazam::translateDNA(seqs)
     }
     
     # find unique seqs
@@ -1965,37 +2141,48 @@ hierarchicalClones_helper <- function(db_gp,
 
     # calculate distance matrix
     if (method == "nt") {
-    	if (! IUPAC){
-            dist_mtx <- fastDist_rcpp(seqs_unq)
-        }
-       	else{
-            dist_mtx <- alakazam::pairwiseDist(seq = seqs_unq, 
-                                 dist_mat = getDNAMatrix(gap = 0))
-        }
+      if (isFALSE(IUPAC)) {
+        dist_mtx <- alakazam::fastDist(seqs_unq)
+      } else {
+        dist_mtx <- alakazam::pairwiseDist(
+          seq = seqs_unq,
+          dist_mat = getDNAMatrix(gap = 0)
+        )
+      }
     } else if (method == "aa") {
-        dist_mtx <- alakazam::pairwiseDist(seq = seqs_unq, 
-                                 dist_mat = getAAMatrix(gap = 0))
+      if (isFALSE(IUPAC)) {
+        dist_mtx <- alakazam::fastDistAA(seqs_unq)
+      } else {
+        dist_mtx <- alakazam::pairwiseDist(
+          seq = seqs_unq,
+          dist_mat = getAAMatrix(gap = 0)
+        )
+      }
     }
     
     # perform hierarchical clustering
     if (normalize == "len") {
-        # calculate normalization factor
         junc_length <- unique(stringi::stri_length(seqs_unq))
-        if(n_unq<65536){
-            hc <- stats::hclust(as.dist(dist_mtx/junc_length), method = linkage) 
+        if (inherits(dist_mtx, "dist")) {
+            dist_norm <- dist_mtx
+            dist_norm[] <- dist_norm[] / junc_length
+        } else {
+            dist_norm <- as.dist(dist_mtx / junc_length)
         }
-        else{
+        if(n_unq<65536){
+            hc <- stats::hclust(dist_norm, method = linkage)
+        } else {
             print(paste0("VJL group size: ", n_unq, ". Function hclust from fastcluster will be used for large vjl group."))
-            hc <- fastcluster::hclust(as.dist(dist_mtx/junc_length), method = linkage)
+            hc <- fastcluster::hclust(dist_norm, method = linkage)
         }
     } else if (normalize == "none") {
+        dist_for_hclust <- if (inherits(dist_mtx, "dist")) dist_mtx else as.dist(dist_mtx)
         if(n_unq<65536){
-            hc <- stats::hclust(as.dist(dist_mtx), method = linkage) 
-        }
-        else{
+            hc <- stats::hclust(dist_for_hclust, method = linkage)
+        } else {
             print(paste0("VJL group size: ", n_unq, ". Function hclust from fastcluster will be used for large vjl group."))
-            hc <- fastcluster::hclust(as.dist(dist_mtx), method = linkage)
-        }    
+            hc <- fastcluster::hclust(dist_for_hclust, method = linkage)
+        }
     }
     
     # cut the tree

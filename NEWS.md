@@ -1,3 +1,44 @@
+Version 1.6.0: September 30, 2026
+-------------------------------------------------------------------------------
+General:
+
++ Increased required version of alakazam to >= 1.5.0. `hierarchicalClones` now uses
+  alakazam's C++ Hamming distance implementations (`fastDist`, `fastDistAA`) and passes
+  their `dist` output directly to `hclust`, reducing memory usage for large VJL groups
+  when `IUPAC=FALSE`.
+
+Clonal analysis:
+
++ `hierarchicalClones` and `identicalClones` now allow amino acid junction sequences
+  if `method="aa"`. Previously, the `junction` column was always assumed to hold nucleotide
+  sequences and translated before clustering.
++ Added a `junction_type` argument (`"auto"`, `"nt"`, `"aa"`) to `identicalClones`,
+  `hierarchicalClones`, and `defineClonesScoper`. It lets users declare whether `junction`
+  holds nucleotide or amino acid content when `method="aa"`, instead of relying on
+  auto detection, which cannot reliably tell apart short amino acid junctions made only of
+  letters shared with the nucleotide alphabet (e.g. `"CARDST"`).
++ Expanded the `IUPAC` parameter in `hierarchicalClones` to both `method="nt"` and
+  `method="aa"`.
++ Improved clonal clustering speed with a new Alakazam C++ Hamming distance implementation 
+  for amino acid sequences (`fastDistAA`) if `method="aa"` and `IUPAC=FALSE` (default).
+
+Bug fixes:
+
++ Fixed `identicalClones` with `method="aa"`: translated amino acid junctions were computed
+  but never used for grouping, so clustering was actually based on the untranslated
+  nucleotide sequences, incorrectly splitting synonymous junctions into separate clones.
++ Fixed `identicalClones`, `hierarchicalClones`, and `spectralClones` in
+  single-cell mode with `summarize_clones=TRUE`: `vjl_groups` and
+  `inter_intra` could reference `clone_id` values no longer matching those in
+  `db`, due to clone ids being renumbered again after merging light chain
+  data without updating those summaries. (Issue #52)
++ Updated how scoper decides whether the junction/cdr3 column holds nucleotide or amino acid
+  sequences. The decision is now made
+  once per dataset. `mod3=TRUE` is now ignored (with a warning) for amino acid junctions,
+  since length says nothing about reading frame for amino acids. A warning is also issued
+  when `method="aa"` is set but no sequence in the data can be confirmed as amino acid.
+
+
 Version 1.5.0: May 5, 2026
 -------------------------------------------------------------------------------
 

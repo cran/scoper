@@ -39,7 +39,8 @@
 the column specified during processing.}
 
 \item{\code{vjl_groups}}{\code{data.frame} of clonal summary, including sequence count, V gene, 
-J gene, junction length, and clone counts.}
+J gene, junction length, and clone counts. In single-cell mode, this 
+summary is defined from heavy/long-chain partitions (IGH or TRB/TRD).}
 
 \item{\code{inter_intra}}{\code{data.frame} containing minimum inter (between) and maximum intra 
 (within) clonal distances.}

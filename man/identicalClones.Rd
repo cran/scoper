@@ -23,7 +23,8 @@ identicalClones(
   nproc = 1,
   verbose = FALSE,
   log = NULL,
-  summarize_clones = FALSE
+  summarize_clones = FALSE,
+  junction_type = c("auto", "nt", "aa")
 )
 }
 \arguments{
@@ -68,20 +69,23 @@ If \code{TRUE} only the first call of the gene assignments is used.
 If \code{FALSE} the union of ambiguous gene assignments is used to 
 group all sequences with any overlapping gene calls.}
 
-\item{cdr3}{if \code{TRUE} removes 3 nucleotides from both ends of \code{"junction"} 
-prior to clustering (converts IMGT junction to CDR3 region). 
-If \code{TRUE} this will also remove records with a junction length 
-less than 7 nucleotides.}
+\item{cdr3}{if \code{TRUE} removes 3 nucleotides or 1 amino acid residue from both ends
+of \code{"junction"} prior to clustering (converts IMGT junction to CDR3
+region). For nucleotide junctions this removes 3 nucleotides from each end
+and requires a junction length greater than 6 nucleotides; for amino acid
+junctions this removes 1 residue from each end and requires a junction
+length greater than 2 residues. Records that are too short are removed.}
 
-\item{mod3}{if \code{TRUE} removes records with a \code{junction} length that is not divisible by 
-3 in nucleotide space.}
+\item{mod3}{if \code{TRUE} removes records with a \code{junction} length that is not divisible by
+3 in nucleotide space. Ignored (with a warning) if the \code{junction} column
+contains amino acid sequences.}
 
-\item{max_n}{The maximum number of non-ATCG characters to permit in the junction sequence before 
-excluding the record from clonal assignment. Counts non-ATCG characters using regex 
-\code{"[^ATCG]"}, which includes N, ?, and IUPAC ambiguity codes. 
-With the default value of 0, all sequences containing any non-ATCG character 
-(including IUPAC codes) in the junction are removed before clustering. Set to \code{NULL} 
-for no filtering.}
+\item{max_n}{The maximum number of non-ATCG characters permitted in the junction nucleotide sequence,
+or the maximum number of non-standard amino acid characters permitted in the junction
+amino acid sequence, before excluding the record from clonal assignment.
+With the default value of 0, nucleotide sequences containing any non-ATCG characters
+(including IUPAC codes), or amino acid sequences containing any non-standard amino acid
+characters, are removed before clustering. Set to \code{NULL} to disable filtering.}
 
 \item{nproc}{number of cores to distribute the function over.}
 
@@ -94,8 +98,16 @@ The default is \code{NULL} for no action.}
 
 \item{summarize_clones}{if \code{TRUE} performs a series of analysis to assess the clonal landscape
 and returns a \link{ScoperClones} object. If \code{FALSE} (default) then
-a modified input \code{db} is returned. When grouping by \code{fields}, 
-\code{summarize_clones} should be \code{FALSE}.}
+a modified input \code{db} is returned. In single-cell mode, \code{vjl_groups}
+summarizes heavy/long-chain partitions used for clustering. When grouping by
+\code{fields}, \code{summarize_clones} should be \code{FALSE}.}
+
+\item{junction_type}{one of \code{"auto"} (default), \code{"nt"}, or \code{"aa"}. Only used when
+\code{method="aa"} (\code{"aa"} is an error for other methods). Declares whether the \code{junction} column holds nucleotide or
+amino acid sequences. With \code{"auto"}, amino acid content is inferred from the presence
+of amino-acid-only letters (E, F, I, L, P, Q, ...); short amino acid sequences made only of
+letters shared with the nucleotide alphabet (e.g. \code{"CARDST"}) cannot be told apart
+from nucleotides and will be mishandled. Set \code{"aa"} or \code{"nt"} to skip autodetection.}
 }
 \value{
 If \code{summarize_clones=FALSE} (default) a modified \code{data.frame} is returned with clone identifiers in the 
@@ -122,12 +134,11 @@ Values in the \code{locus} column must be one of \code{c("IGH", "IGI", "IGK", "I
 or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
 return an error message.
 
-Under single-cell mode with paired-chain sequences, there is a choice of whether 
-grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
-(b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
-This is governed by the \code{only_heavy} argument. There is also choice as to whether 
-inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
-heavy/long chain clustering, which is governed by the \code{split_light} argument.
+In single-cell mode, clonal clustering is performed using heavy/long chains only
+(IGH for BCR or TRB/TRD for TCR). The \code{only_heavy=FALSE} and
+\code{split_light=TRUE} options are deprecated and ignored with warnings.
+Consequently, \code{vjl_groups} summarizes heavy/long-chain V/J/junction-length
+partitions and does not define groups from light/short chains.
 
 In single-cell mode, clonal clustering will not be performed on data where cells are 
 assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 

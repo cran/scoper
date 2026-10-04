@@ -28,7 +28,8 @@ hierarchicalClones(
   verbose = FALSE,
   log = NULL,
   summarize_clones = FALSE,
-  seq_id = "sequence_id"
+  seq_id = "sequence_id",
+  junction_type = c("auto", "nt", "aa")
 )
 }
 \arguments{
@@ -37,8 +38,7 @@ hierarchicalClones(
 \item{threshold}{numeric scalar where the tree should be cut (the distance threshold for clonal grouping).}
 
 \item{method}{one of the \code{"nt"} for nucleotide based clustering or 
-\code{"aa"} for amino acid based clustering. Method `"aa"` still expects nucleotide sequences, 
-which will be translated to amino acids}
+\code{"aa"} for amino acid based clustering. Method `"aa"` accepts either amino acid or nucleotide sequences. Nucleotide sequences are automatically translated into amino acid sequences.}
 
 \item{linkage}{available linkage are \code{"single"}, \code{"average"}, and \code{"complete"}.}
 
@@ -48,12 +48,14 @@ of the sequence group. If \code{"none"} then no normalization if performed.}
 \item{IUPAC}{If \code{TRUE}, allows sequences with IUPAC codes to pass validation 
 and be used in clustering with IUPAC-aware distance calculation 
 (via \code{alakazam::pairwiseDist}). If \code{FALSE} (default), uses fast Hamming distance 
-(via \code{fastDist_rcpp}) and only allows standard bases (A, T, C, G), N, and ? 
-in sequences. This parameter controls validation and distance
+(via \code{alakazam::fastDist}) and only allows standard bases (A, T, C, G), N, and ? 
+in nt sequences if \code{method="nt"} or uses fast Hamming distance 
+(via \code{alakazam::fastDistAA}) and only allows 20 standard amino acids, X, *, - and . in 
+aa sequences if \code{method="aa"}. This parameter controls validation and distance
 calculation method, not sequence filtering. See \code{max_n} for 
 filtering sequences by character content. See the IUPAC and max_n 
-parameters section for more details and examples. Note: This parameter is only available 
-for \code{hierarchicalClones} with \code{method="nt"}.}
+parameters section for more details and examples. Note: This parameter applies only to
+\code{hierarchicalClones}.}
 
 \item{junction}{character name of the column containing junction sequences.
 Also used to determine sequence length for grouping.}
@@ -91,22 +93,27 @@ If \code{TRUE} only the first call of the gene assignments is used.
 If \code{FALSE} the union of ambiguous gene assignments is used to 
 group all sequences with any overlapping gene calls.}
 
-\item{cdr3}{if \code{TRUE} removes 3 nucleotides from both ends of \code{"junction"} 
-prior to clustering (converts IMGT junction to CDR3 region). 
-If \code{TRUE} this will also remove records with a junction length 
-less than 7 nucleotides.}
+\item{cdr3}{if \code{TRUE} removes 3 nucleotides on 1 amino acid residue from both ends
+of \code{"junction"} prior to clustering (converts IMGT junction to CDR3
+region). For nucleotide junctions this removes 3 nucleotides from each end
+and requires a junction length greater than 6 nucleotides; for amino acid
+junctions this removes 1 residue from each end and requires a junction
+length greater than 2 residues. Records that are too short are removed.}
 
-\item{mod3}{if \code{TRUE} removes records with a \code{junction} length that is not divisible by 
-3 in nucleotide space.}
+\item{mod3}{if \code{TRUE} removes records with a \code{junction} length that is not divisible by
+3 in nucleotide space. Ignored (with a warning) if the \code{junction} column
+contains amino acid sequences.}
 
-\item{max_n}{The maximum number of non-ATCG characters (degenerate positions) to permit 
-in the junction sequence before excluding the record from clonal assignment. 
+\item{max_n}{The maximum number of non-ATCG characters permitted in the junction nucleotide sequence,
+or the maximum number of non-standard amino acid characters permitted in the junction
+amino acid sequence, before excluding the record from clonal assignment.
+With the default value of 0, nucleotide sequences containing any non-ATCG characters
+(including IUPAC codes), or amino acid sequences containing any non-standard amino acid
+characters, are removed before clustering. Default is 0 (ATCG-only). 
+Set to \code{NULL} to disable filtering.
 Note: \code{max_n} operates independently 
 from \code{IUPAC} - it controls filtering by character count, while 
-\code{IUPAC} controls validation and distance calculation method. 
-With \code{linkage="single"}, non-informative positions can create 
-artifactual links between unrelated sequences. Use with caution. 
-Default is 0 (ATCG-only). Set to \code{NULL} for no filtering.}
+\code{IUPAC} controls validation and distance calculation method.}
 
 \item{nproc}{number of cores to distribute the function over.}
 
@@ -120,10 +127,18 @@ The default is \code{NULL} for no action.}
 \item{summarize_clones}{if \code{TRUE} performs a series of analysis to assess the clonal landscape
 and returns a \link{ScoperClones} object. If \code{FALSE} (default) then
 a modified input \code{db} is returned with clone identifiers in the specified 
-`clone` column. When grouping by \code{fields}, 
+`clone` column. In single-cell mode, \code{vjl_groups} summarizes
+heavy/long-chain partitions used for clustering. When grouping by \code{fields},
 \code{summarize_clones} should be \code{FALSE}.}
 
 \item{seq_id}{The column containing sequence ids}
+
+\item{junction_type}{one of \code{"auto"} (default), \code{"nt"}, or \code{"aa"}. Only used when
+\code{method="aa"} (\code{"aa"} is an error for other methods). Declares whether the \code{junction} column holds nucleotide or
+amino acid sequences. With \code{"auto"}, amino acid content is inferred from the presence
+of amino-acid-only letters (E, F, I, L, P, Q, ...); short amino acid sequences made only of
+letters shared with the nucleotide alphabet (e.g. \code{"CARDST"}) cannot be told apart
+from nucleotides and will be mishandled. Set \code{"aa"} or \code{"nt"} to skip autodetection.}
 }
 \value{
 If \code{summarize_clones=FALSE} (default) a modified \code{data.frame} is returned with clone identifiers in the 
@@ -141,11 +156,8 @@ same V gene, J gene, and junction length, allowing for ambiguous V or J gene ann
 }
 \section{IUPAC and max_n parameters}{
 
-Note: The \code{IUPAC} parameter is only available for \code{hierarchicalClones} with 
-\code{method="nt"} (nucleotide mode). It is ignored when \code{method="aa"} (amino acid mode). 
-The \code{max_n} parameter is available for all cloning functions.
 
-The \code{IUPAC} and \code{max_n} parameters serve complementary but distinct purposes:
+Note: The \code{IUPAC} and \code{max_n} parameters serve complementary but distinct purposes:
 
 \code{IUPAC} controls:
 \itemize{
@@ -155,14 +167,12 @@ The \code{IUPAC} and \code{max_n} parameters serve complementary but distinct pu
 
 \code{max_n} controls:
 \itemize{
-  \item Sequence filtering by counting non-ATCG characters in the junction
+  \item Sequence filtering by counting non-ATCG characters in the nt junction or by counting non-standard AA characters 
+  in the aa junction
 }
 
-\code{hierarchicalClones} with \code{method="aa"} accepts the full IUPAC DNA alphabet during validation, 
-then \code{max_n} controls filtering of sequences containing excess non-ATCG characters 
-before translating to amino acids and performing IUPAC-aware clustering.
 
-Example use cases for \code{hierarchicalClones} with \code{method="nt"}:
+Example use cases for \code{prepare_db} with \code{method="nt"} or \code{method="aa"} but nt sequences in the junctions :
 \itemize{
   \item \code{IUPAC=FALSE, max_n=0}: Strict ATCG-only mode with fast distance calculation. 
         Will throw an error and exit if sequences with characters not A, T, C, G, N, or ? are detected.
@@ -185,12 +195,25 @@ Example use cases for \code{hierarchicalClones} with \code{method="nt"}:
         Most permissive option.
 }
 
-Note: Validation occurs before filtering. When \code{IUPAC=FALSE}, sequences containing IUPAC 
-ambiguity codes (R, Y, W, S, M, K, etc.) will fail validation and be rejected before the 
-\code{max_n} filtering step. Therefore, with \code{IUPAC=FALSE, max_n > 0}, only sequences 
-with N and ? characters (not IUPAC codes) can pass validation and be filtered by \code{max_n}. 
-The \code{max_n} parameter always counts using regex \code{"[^ATCG]"}, but \code{IUPAC} determines 
-which non-ATCG characters are allowed to reach the filtering step.
+Example use cases for \code{prepare_db} with \code{method="aa"} and amino acid sequences in the junction:
+\itemize{
+  \item \code{IUPAC=FALSE, max_n=0}, with amino acid sequences in the junction:
+        Strict standard amino acid mode with fast distance calculation. 
+        Will throw an error and exit if sequences with IUPAC ambiguous amino acid characters and 
+        max_n=0 will filter out sequences with non-standard amino acid characters. Fastest option for high-quality data.
+  \item \code{IUPAC=FALSE, max_n>0}, with amino acid sequences in the junction: 
+        Will throw an error and exit if sequences have IUPAC ambiguous amino acid characters. 
+        Allows sequences with limited non-standard amino acid characters in distance calculation.
+        Use fast Hamming distance. 
+  \item \code{IUPAC=TRUE, max_n=2}, with amino acide sequences in the junction: 
+        Uses IUPAC-aware distance but filters out sequences with more than \code{max_n} non-standard
+        amino acid characters.
+        Slower than IUPAC=FALSE, but handles any ambiguity codes in the input.
+}
+
+Note: Validation occurs before filtering. When \code{IUPAC=FALSE}, junction nucleotide sequences containing IUPAC 
+ambiguity codes (R, Y, W, S, M, K, etc.)  or junction amino acide sequences containing IUPAC ambiguity codes (B,Z,J)
+will fail validation and be rejected before the \code{max_n} filtering step.
 }
 
 \section{Single-cell data}{
@@ -203,12 +226,11 @@ Values in the \code{locus} column must be one of \code{c("IGH", "IGI", "IGK", "I
 or \code{c("TRA", "TRB", "TRD", "TRG")} for TCR sequences. Otherwise, the operation will exit and 
 return an error message.
 
-Under single-cell mode with paired-chain sequences, there is a choice of whether 
-grouping should be done by (a) using IGH (BCR) or TRB/TRD (TCR) sequences only or
-(b) using IGH plus IGK/IGL (BCR) or TRB/TRD plus TRA/TRG (TCR) sequences. 
-This is governed by the \code{only_heavy} argument. There is also choice as to whether 
-inferred clones should be split by the light/short chain (IGK, IGL, TRA, TRG) following 
-heavy/long chain clustering, which is governed by the \code{split_light} argument.
+In single-cell mode, clonal clustering is performed using heavy/long chains only
+(IGH for BCR or TRB/TRD for TCR). The \code{only_heavy=FALSE} and
+\code{split_light=TRUE} options are deprecated and ignored with warnings.
+Consequently, \code{vjl_groups} summarizes heavy/long-chain V/J/junction-length
+partitions and does not define groups from light/short chains.
 
 In single-cell mode, clonal clustering will not be performed on data where cells are 
 assigned multiple heavy/long chain sequences (IGH, TRB, TRD). If observed, the operation 

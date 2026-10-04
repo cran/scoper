@@ -14,52 +14,66 @@ import(graphics)
 import(methods)
 import(utils)
 importFrom(Rcpp,evalCpp)
-importFrom(alakazam,baseTheme)
-importFrom(alakazam,checkColumns)
-importFrom(alakazam,getAAMatrix)
-importFrom(alakazam,getDNAMatrix)
-importFrom(alakazam,getLocus)
-importFrom(alakazam,groupGenes)
-importFrom(alakazam,padSeqEnds)
-importFrom(alakazam,pairwiseDist)
-importFrom(alakazam,progressBar)
-importFrom(alakazam,translateDNA)
-importFrom(data.table,.I)
-importFrom(data.table,as.data.table)
+importFrom(alakazam,
+  baseTheme,
+  checkColumns,
+  getAAMatrix,
+  getDNAMatrix,
+  getLocus,
+  groupGenes,
+  padSeqEnds,
+  pairwiseDist,
+  progressBar,
+  translateDNA
+)
+importFrom(data.table,
+  .I,
+  as.data.table
+)
 importFrom(doParallel,registerDoParallel)
-importFrom(dplyr,"%>%")
-importFrom(dplyr,arrange)
-importFrom(dplyr,bind_rows)
-importFrom(dplyr,distinct)
-importFrom(dplyr,do)
-importFrom(dplyr,filter)
-importFrom(dplyr,group_by)
-importFrom(dplyr,group_indices)
-importFrom(dplyr,left_join)
-importFrom(dplyr,mutate)
-importFrom(dplyr,n)
-importFrom(dplyr,select)
-importFrom(dplyr,slice)
-importFrom(dplyr,summarize)
-importFrom(dplyr,ungroup)
+importFrom(dplyr,
+  "%>%",
+  arrange,
+  bind_rows,
+  distinct,
+  do,
+  filter,
+  group_by,
+  group_indices,
+  left_join,
+  mutate,
+  n,
+  select,
+  slice,
+  summarize,
+  ungroup
+)
 importFrom(fastcluster,hclust)
-importFrom(foreach,"%dopar%")
-importFrom(foreach,foreach)
-importFrom(foreach,registerDoSEQ)
-importFrom(rlang,sym)
-importFrom(rlang,syms)
+importFrom(foreach,
+  "%dopar%",
+  foreach,
+  registerDoSEQ
+)
+importFrom(rlang,
+  sym,
+  syms
+)
 importFrom(scales,pretty_breaks)
 importFrom(shazam,consensusSequence)
-importFrom(stats,as.dist)
-importFrom(stats,cor)
-importFrom(stats,cutree)
-importFrom(stats,density)
-importFrom(stats,kmeans)
-importFrom(stats,sd)
-importFrom(stats,setNames)
-importFrom(stringi,stri_count)
-importFrom(stringi,stri_join)
-importFrom(stringi,stri_length)
-importFrom(stringi,stri_split_fixed)
+importFrom(stats,
+  as.dist,
+  cor,
+  cutree,
+  density,
+  kmeans,
+  sd,
+  setNames
+)
+importFrom(stringi,
+  stri_count,
+  stri_join,
+  stri_length,
+  stri_split_fixed
+)
 importFrom(tidyr,separate)
 useDynLib(scoper, .registration=TRUE)
